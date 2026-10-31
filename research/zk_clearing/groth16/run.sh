@@ -24,6 +24,11 @@ CIRCOM="${CIRCOM:-circom}"
 NODE="${NODE:-node}"
 NPM="${NPM:-npm}"
 POWER="${POWER:-14}"
+# CIRCUIT_DIR holds <circuit>.circom (default circuits/). PTAU=<file> reuses a
+# prepared phase-1 file (from an earlier run at a power >= the circuit needs)
+# instead of generating one.
+CIRCUIT_DIR="${CIRCUIT_DIR:-$ZK/circuits}"
+PTAU="${PTAU:-}"
 REQUIRED_CIRCOM="2.2.2"
 BEACON="$(printf 'p2poolv2 zk_clearing insecure deterministic setup v1' | sha256sum | cut -d' ' -f1)"
 RESULTS="$BUILD/results.txt"
@@ -54,14 +59,19 @@ measure() { # measure <label> <command...>: run, append wall seconds and max RSS
 } >> "$RESULTS"
 
 echo "== compile"
-measure "compile" "$CIRCOM" "$ZK/circuits/$CIRCUIT.circom" --r1cs --wasm --sym --O2 \
+measure "compile" "$CIRCOM" "$CIRCUIT_DIR/$CIRCUIT.circom" --r1cs --wasm --sym --O2 \
   -l "$BUILD/deps/node_modules" -o "$BUILD"
 "${SNARKJS[@]}" r1cs info "$BUILD/$CIRCUIT.r1cs" | tee "$BUILD/r1cs-info.txt"
 grep -E "# of (Constraints|Wires|Private Inputs|Public Inputs|Outputs)" "$BUILD/r1cs-info.txt" \
   | sed 's/.*\] //' >> "$RESULTS"
 
 echo "== fixtures"
-python3 "$ZK/fixtures.py" "$BUILD/inputs" "$CIRCUIT"
+# FIXTURES=<script> overrides the generator; it gets <out dir> <node_modules dir>.
+if [ -n "${FIXTURES:-}" ]; then
+  bash "$FIXTURES" "$BUILD/inputs" "$BUILD/deps/node_modules"
+else
+  python3 "$ZK/fixtures.py" "$BUILD/inputs" "$CIRCUIT"
+fi
 WITNESS_JS=("$NODE" "$BUILD/${CIRCUIT}_js/generate_witness.js" "$BUILD/${CIRCUIT}_js/$CIRCUIT.wasm")
 
 echo "== valid witness"
@@ -89,10 +99,15 @@ for fixture in "$BUILD"/inputs/invalid/*.json; do
 done
 
 echo "== setup (insecure deterministic beacon)"
+if [ -n "$PTAU" ]; then
+  cp "$PTAU" "$BUILD/pot_final.ptau"
+  echo "phase 1: reused $PTAU" >> "$RESULTS"
+else
 measure "ptau new + beacon + prepare" bash -c "
   '${SNARKJS[0]}' '${SNARKJS[1]}' powersoftau new bn128 $POWER '$BUILD/pot_0.ptau' >/dev/null &&
   '${SNARKJS[0]}' '${SNARKJS[1]}' powersoftau beacon '$BUILD/pot_0.ptau' '$BUILD/pot_1.ptau' $BEACON 10 -n=insecure >/dev/null &&
   '${SNARKJS[0]}' '${SNARKJS[1]}' powersoftau prepare phase2 '$BUILD/pot_1.ptau' '$BUILD/pot_final.ptau' >/dev/null"
+fi
 measure "groth16 setup + beacon" bash -c "
   '${SNARKJS[0]}' '${SNARKJS[1]}' groth16 setup '$BUILD/$CIRCUIT.r1cs' '$BUILD/pot_final.ptau' '$BUILD/${CIRCUIT}_0.zkey' >/dev/null &&
   '${SNARKJS[0]}' '${SNARKJS[1]}' zkey beacon '$BUILD/${CIRCUIT}_0.zkey' '$BUILD/$CIRCUIT.zkey' $BEACON 10 -n=insecure >/dev/null"
@@ -122,8 +137,10 @@ if cmp -s <("$NODE" -p "JSON.stringify(require('$BUILD/public.json'))") \
 else
   echo "re-split sale list: proves different public signals" | tee -a "$RESULTS"
 fi
-if grep -q "main.saleCommitment" "$BUILD/$CIRCUIT.sym"; then
-  expected="$("$NODE" "$HERE/commit.js" "$BUILD/deps/node_modules" "$BUILD/inputs/valid.json")"
+# COMMIT_JS=<script> recomputes public signal 0 (saleCommitment) from valid.json.
+if [ -z "${COMMIT_JS:-}" ] && [ "$CIRCUIT" = accounting16x4_committed ]; then COMMIT_JS="$HERE/commit.js"; fi
+if [ -n "${COMMIT_JS:-}" ]; then
+  expected="$("$NODE" "$COMMIT_JS" "$BUILD/deps/node_modules" "$BUILD/inputs/valid.json")"
   proved="$("$NODE" -p "require('$BUILD/public.json')[0]")"
   resplit="$("$NODE" -p "require('$BUILD/resplit-public.json')[0]")"
   echo "saleCommitment (circomlibjs, honest sale list): $expected" >> "$RESULTS"
