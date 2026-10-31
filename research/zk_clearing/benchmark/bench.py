@@ -29,7 +29,6 @@ from txsize import (
     Input,
     htlc_p2tr_claim_input,
     htlc_p2wsh_claim_input,
-    p2tr_committee_leaf_input,
     vbytes,
     witness,
 )
@@ -111,17 +110,16 @@ def lightning(workload) -> dict:
 def batch_clearing(workload, batch_size: int, measured: dict) -> dict:
     m2 = measured["m2"]
     escrow_funding = vbytes([P2TR_KEY_IN], [P2TR_OUT, P2TR_OUT])
-    escrow_spend = p2tr_committee_leaf_input(1)
-    escrow_input_delta = math.ceil((4 * 41 + escrow_spend.witness_bytes) / 4)
     batches = [workload[i : i + batch_size] for i in range(0, len(workload), batch_size)]
     per_batch = []
     for batch in batches:
         payees = len({offer.miner for offer in batch})
         escrows = len({offer.market_maker for offer in batch})
-        outputs = payees + escrows + 1 + 1  # sellers, refunds, fee, operator change
-        # Anchored on M2's measured payout (4 inputs, 8 outputs); computed deltas per output and escrow.
-        payout = m2["payout_vbytes"] + 43 * (outputs - 8) + escrow_input_delta * (escrows - 3)
-        on_chain = escrows * escrow_funding + m2["honest_unchallenged_vbytes"] - m2["payout_vbytes"] + payout
+        template_outputs = payees + escrows + 1  # sellers, refunds, fee
+        # M2's measured honest path: fixed part + key-path escrow inputs + template outputs.
+        honest = math.ceil(m2["honest_fixed_vbytes"] + m2["honest_per_escrow_vbytes"] * escrows
+                           + m2["honest_per_payee_output_vbytes"] * template_outputs)
+        on_chain = escrows * escrow_funding + honest
         fill_seconds = batch[-1].arrival - batch[0].arrival
         per_batch.append(
             {
