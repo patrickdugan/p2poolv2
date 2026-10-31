@@ -111,6 +111,7 @@ bound.
 ## Next concrete BitVM milestone
 
 **M1: assert this proof's public signals on Bitcoin regtest, and settle according to them.**
+Done on 2026-11-01. What ran and what was measured is in [bitvm/M1.md](bitvm/M1.md).
 
 1. **Proof conversion.** Convert the v1 snarkjs proof and verifying key to the arkworks BN254
    Groth16 types used by the BitVM Groth16 verifier. Check that the converted proof still

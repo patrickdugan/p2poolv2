@@ -1,0 +1,124 @@
+{
+  "bond_sats": 10000000,
+  "escrow_last_funded_height": 315,
+  "escrows": [
+    {
+      "buyer": "buyer1",
+      "outpoint": "2755d4c234b3994dca32ee979a3e8448c04046083fe8dcd86705918c2ff978b5:0",
+      "sats": 2000000
+    },
+    {
+      "buyer": "buyer2",
+      "outpoint": "2d2d3ef1208e5330e4571b102e5db0035d318adcfef1e7f003a3d21c62ce1b58:1",
+      "sats": 1900000
+    },
+    {
+      "buyer": "buyer3",
+      "outpoint": "3e37525ed3eb4614d95a57e2514f82d65369aae30ce6f44fb336377247378e27:0",
+      "sats": 750000
+    }
+  ],
+  "fee_rate_sat_per_vb": 2,
+  "negative_early_refund": {
+    "note": "one block before T_refund",
+    "rejected_block": "TestBlockValidity failed: bad-txns-nonfinal, contains a non-BIP68-final transaction 652f7270584596fc67ef4667bb021172de93e7f8458af452d1c8c5709e304e69",
+    "rejected_mempool": "non-BIP68-final",
+    "tx": "refund(early)",
+    "txid": "652f7270584596fc67ef4667bb021172de93e7f8458af452d1c8c5709e304e69",
+    "vbytes": 138,
+    "weight": 549
+  },
+  "refunded_sats": [
+    1999724,
+    1899724,
+    749724
+  ],
+  "scenario": "stall",
+  "t_challenge": 6,
+  "t_refund": 30,
+  "template_outputs": [
+    {
+      "payee": "seller-alice",
+      "role": "seller",
+      "sats": 1900000
+    },
+    {
+      "payee": "seller-bob",
+      "role": "seller",
+      "sats": 1800000
+    },
+    {
+      "payee": "seller-carol",
+      "role": "seller",
+      "sats": 450000
+    },
+    {
+      "payee": "refund-buyer1",
+      "role": "refund",
+      "sats": 330000
+    },
+    {
+      "payee": "refund-buyer2",
+      "role": "refund",
+      "sats": 82000
+    },
+    {
+      "payee": "refund-buyer3",
+      "role": "refund",
+      "sats": 43000
+    },
+    {
+      "payee": "operator-fee",
+      "role": "fee",
+      "sats": 45000
+    }
+  ],
+  "template_signals_differ_from_proof": [],
+  "transactions": [
+    {
+      "note": "one block before T_refund",
+      "rejected_block": "TestBlockValidity failed: bad-txns-nonfinal, contains a non-BIP68-final transaction 652f7270584596fc67ef4667bb021172de93e7f8458af452d1c8c5709e304e69",
+      "rejected_mempool": "non-BIP68-final",
+      "tx": "refund(early)",
+      "txid": "652f7270584596fc67ef4667bb021172de93e7f8458af452d1c8c5709e304e69",
+      "vbytes": 138,
+      "weight": 549
+    },
+    {
+      "inputs": 1,
+      "mempool_now": "accepted",
+      "mined_height": 345,
+      "mined_via": "mempool",
+      "note": "escrow refund leaf after T_refund",
+      "outputs": 1,
+      "tx": "refund[buyer1]",
+      "txid": "033eec657c5483215fbd3bb39191de97cfcddcc98fc9cfa81dc661c770c2282a",
+      "vbytes": 138,
+      "weight": 549
+    },
+    {
+      "inputs": 1,
+      "mempool_now": "accepted",
+      "mined_height": 345,
+      "mined_via": "mempool",
+      "note": "escrow refund leaf after T_refund",
+      "outputs": 1,
+      "tx": "refund[buyer2]",
+      "txid": "7c67563add60dc1fb41b57b90ac422487db40aa8980c8e80dd6df417da9f0159",
+      "vbytes": 138,
+      "weight": 549
+    },
+    {
+      "inputs": 1,
+      "mempool_now": "accepted",
+      "mined_height": 345,
+      "mined_via": "mempool",
+      "note": "escrow refund leaf after T_refund",
+      "outputs": 1,
+      "tx": "refund[buyer3]",
+      "txid": "652f7270584596fc67ef4667bb021172de93e7f8458af452d1c8c5709e304e69",
+      "vbytes": 138,
+      "weight": 549
+    }
+  ]
+}

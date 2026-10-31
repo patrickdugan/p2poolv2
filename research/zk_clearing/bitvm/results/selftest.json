@@ -1,0 +1,242 @@
+{
+  "binding_leaves": [
+    {
+      "honest_opens": false,
+      "leaf_bytes": 10521,
+      "opens_on_x_plus_r": true,
+      "opens_when_template_is_S_prime": false,
+      "signal": "saleCommitment"
+    },
+    {
+      "honest_opens": false,
+      "leaf_bytes": 10521,
+      "opens_on_x_plus_r": true,
+      "opens_when_template_is_S_prime": false,
+      "signal": "funding[0]"
+    },
+    {
+      "honest_opens": false,
+      "leaf_bytes": 10521,
+      "opens_on_x_plus_r": true,
+      "opens_when_template_is_S_prime": false,
+      "signal": "funding[1]"
+    },
+    {
+      "honest_opens": false,
+      "leaf_bytes": 10521,
+      "opens_on_x_plus_r": true,
+      "opens_when_template_is_S_prime": false,
+      "signal": "funding[2]"
+    },
+    {
+      "honest_opens": false,
+      "leaf_bytes": 10521,
+      "opens_on_x_plus_r": true,
+      "opens_when_template_is_S_prime": false,
+      "signal": "funding[3]"
+    },
+    {
+      "honest_opens": false,
+      "leaf_bytes": 10521,
+      "opens_on_x_plus_r": true,
+      "opens_when_template_is_S_prime": false,
+      "signal": "feeBudget[0]"
+    },
+    {
+      "honest_opens": false,
+      "leaf_bytes": 10521,
+      "opens_on_x_plus_r": true,
+      "opens_when_template_is_S_prime": false,
+      "signal": "feeBudget[1]"
+    },
+    {
+      "honest_opens": false,
+      "leaf_bytes": 10521,
+      "opens_on_x_plus_r": true,
+      "opens_when_template_is_S_prime": false,
+      "signal": "feeBudget[2]"
+    },
+    {
+      "honest_opens": false,
+      "leaf_bytes": 10521,
+      "opens_on_x_plus_r": true,
+      "opens_when_template_is_S_prime": false,
+      "signal": "feeBudget[3]"
+    },
+    {
+      "honest_opens": false,
+      "leaf_bytes": 10521,
+      "opens_on_x_plus_r": true,
+      "opens_when_template_is_S_prime": true,
+      "signal": "refund[0]"
+    },
+    {
+      "honest_opens": false,
+      "leaf_bytes": 10521,
+      "opens_on_x_plus_r": true,
+      "opens_when_template_is_S_prime": true,
+      "signal": "refund[1]"
+    },
+    {
+      "honest_opens": false,
+      "leaf_bytes": 10521,
+      "opens_on_x_plus_r": true,
+      "opens_when_template_is_S_prime": false,
+      "signal": "refund[2]"
+    },
+    {
+      "honest_opens": false,
+      "leaf_bytes": 10521,
+      "opens_on_x_plus_r": true,
+      "opens_when_template_is_S_prime": false,
+      "signal": "refund[3]"
+    },
+    {
+      "honest_opens": false,
+      "leaf_bytes": 10521,
+      "opens_on_x_plus_r": true,
+      "opens_when_template_is_S_prime": false,
+      "signal": "totalPayout"
+    },
+    {
+      "honest_opens": false,
+      "leaf_bytes": 10521,
+      "opens_on_x_plus_r": true,
+      "opens_when_template_is_S_prime": false,
+      "signal": "buyerId[0]"
+    },
+    {
+      "honest_opens": false,
+      "leaf_bytes": 10521,
+      "opens_on_x_plus_r": true,
+      "opens_when_template_is_S_prime": false,
+      "signal": "buyerId[1]"
+    },
+    {
+      "honest_opens": false,
+      "leaf_bytes": 10521,
+      "opens_on_x_plus_r": true,
+      "opens_when_template_is_S_prime": false,
+      "signal": "buyerId[2]"
+    },
+    {
+      "honest_opens": false,
+      "leaf_bytes": 10521,
+      "opens_on_x_plus_r": true,
+      "opens_when_template_is_S_prime": false,
+      "signal": "buyerId[3]"
+    }
+  ],
+  "commit_batches": 42,
+  "commit_max_stack_items": 907,
+  "plus_r_sweep": [
+    {
+      "disprove_leaf": 70,
+      "leaf_bytes": 2623880,
+      "signal": "saleCommitment",
+      "witness_items": 155
+    },
+    {
+      "disprove_leaf": 66,
+      "leaf_bytes": 2623847,
+      "signal": "funding[0]",
+      "witness_items": 155
+    },
+    {
+      "disprove_leaf": 62,
+      "leaf_bytes": 2623847,
+      "signal": "funding[1]",
+      "witness_items": 155
+    },
+    {
+      "disprove_leaf": 58,
+      "leaf_bytes": 2623845,
+      "signal": "funding[2]",
+      "witness_items": 155
+    },
+    {
+      "disprove_leaf": 54,
+      "leaf_bytes": 2623911,
+      "signal": "funding[3]",
+      "witness_items": 155
+    },
+    {
+      "disprove_leaf": 50,
+      "leaf_bytes": 2623845,
+      "signal": "feeBudget[0]",
+      "witness_items": 155
+    },
+    {
+      "disprove_leaf": 46,
+      "leaf_bytes": 2623859,
+      "signal": "feeBudget[1]",
+      "witness_items": 155
+    },
+    {
+      "disprove_leaf": 42,
+      "leaf_bytes": 2623877,
+      "signal": "feeBudget[2]",
+      "witness_items": 155
+    },
+    {
+      "disprove_leaf": 38,
+      "leaf_bytes": 2623852,
+      "signal": "feeBudget[3]",
+      "witness_items": 155
+    },
+    {
+      "disprove_leaf": 34,
+      "leaf_bytes": 2623889,
+      "signal": "refund[0]",
+      "witness_items": 155
+    },
+    {
+      "disprove_leaf": 30,
+      "leaf_bytes": 2623866,
+      "signal": "refund[1]",
+      "witness_items": 155
+    },
+    {
+      "disprove_leaf": 26,
+      "leaf_bytes": 2623875,
+      "signal": "refund[2]",
+      "witness_items": 155
+    },
+    {
+      "disprove_leaf": 22,
+      "leaf_bytes": 2623825,
+      "signal": "refund[3]",
+      "witness_items": 155
+    },
+    {
+      "disprove_leaf": 18,
+      "leaf_bytes": 2623849,
+      "signal": "totalPayout",
+      "witness_items": 155
+    },
+    {
+      "disprove_leaf": 14,
+      "leaf_bytes": 2623852,
+      "signal": "buyerId[0]",
+      "witness_items": 155
+    },
+    {
+      "disprove_leaf": 10,
+      "leaf_bytes": 2623846,
+      "signal": "buyerId[1]",
+      "witness_items": 155
+    },
+    {
+      "disprove_leaf": 6,
+      "leaf_bytes": 2623847,
+      "signal": "buyerId[2]",
+      "witness_items": 155
+    },
+    {
+      "disprove_leaf": 2,
+      "leaf_bytes": 2531053,
+      "signal": "buyerId[3]",
+      "witness_items": 102
+    }
+  ]
+}

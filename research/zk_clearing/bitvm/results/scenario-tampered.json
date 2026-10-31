@@ -1,0 +1,282 @@
+{
+  "a_confirmed_height": 220,
+  "a_tree": {
+    "binding_leaves": 18,
+    "bitvm_leaf_bytes_total": 1289259813,
+    "bitvm_leaves": 432,
+    "depth": 9,
+    "leaves": 451
+  },
+  "asserted_differs_from_template": [],
+  "asserted_public_signal_bytes": [
+    "72f8ad182e07c89af7430a17f76548ab28002fa083cab8879923542dc74609ad",
+    "0000000000000000000000000000000000000000000000000000000000e14808",
+    "0000000000000000000000000000000000000000000000000000000000c1df0e",
+    "0000000000000000000000000000000000000000000000000000000000b0170b",
+    "0000000000000000000000000000000000000000000000000000000000000000",
+    "000000000000000000000000000000000000000000000000000000000000e402",
+    "0000000000000000000000000000000000000000000000000000000000006405",
+    "000000000000000000000000000000000000000000000000000000000000b185",
+    "0000000000000000000000000000000000000000000000000000000000000000",
+    "000000000000000000000000000000000000000000000000000000000050cc06",
+    "000000000000000000000000000000000000000000000000000000000000d700",
+    "0000000000000000000000000000000000000000000000000000000000007a8f",
+    "0000000000000000000000000000000000000000000000000000000000000000",
+    "0000000000000000000000000000000000000000000000000000000000f3250f",
+    "9097d4dc20a50b80f3b5bb6d1429e5490b5bf0848689ad822d95dfa68654c6c8",
+    "10e1fd4237c76ff65ead68470689f1b83e8a722f153bc5bbe62323efe3cc304d",
+    "51c92b34322d49d565dd5ba501ba1ee6bf32b04fd0ab6067b7eb82cc42858d64",
+    "0000000000000000000000000000000000000000000000000000000000000000"
+  ],
+  "binding_leaves_that_open": [],
+  "bitvm_validate": "chunk 431 disprovable",
+  "bond_sats": 10000000,
+  "challenger_receives_sats": 8676792,
+  "disprove_leaf": {
+    "index": 431,
+    "kind": "BitVM chunk 431 of 432",
+    "leaf_bytes": 947272,
+    "witness_items": 473
+  },
+  "disprove_leaf_opens_on_honest_assertion": false,
+  "escrow_last_funded_height": 216,
+  "escrows": [
+    {
+      "buyer": "buyer1",
+      "outpoint": "20c28ece888dc962c7f6f8568472794c831c7d7fbaeca3b5ff4aeaa6049eadd7:1",
+      "sats": 2000000
+    },
+    {
+      "buyer": "buyer2",
+      "outpoint": "d76d779a86c16e02fcf4da4d94514248b21ce145aab2f048721616bd67e84727:0",
+      "sats": 1900000
+    },
+    {
+      "buyer": "buyer3",
+      "outpoint": "612c346e0e3f56bfdcd9e55d036d75e0620f9043623c322e5210cb748b49cc52:0",
+      "sats": 750000
+    }
+  ],
+  "fee_rate_sat_per_vb": 2,
+  "negative_early_refund": {
+    "note": "one block before T_refund",
+    "rejected_block": "TestBlockValidity failed: bad-txns-nonfinal, contains a non-BIP68-final transaction 1c78fb48147158bae1abe5df2a8d90cce667b5f41adf69e7520f70eeca66c378",
+    "rejected_mempool": "non-BIP68-final",
+    "tx": "refund(early)",
+    "txid": "1c78fb48147158bae1abe5df2a8d90cce667b5f41adf69e7520f70eeca66c378",
+    "vbytes": 138,
+    "weight": 549
+  },
+  "negative_payout_after_disprove": {
+    "note": "A already spent",
+    "rejected_block": "TestBlockValidity failed: bad-txns-inputs-missingorspent, CheckTxInputs: inputs missing/spent in transaction 19e21618ff96520e2d83d577c48806d3d0117d7067d27c5d343a030096eae714",
+    "rejected_mempool": "missing-inputs",
+    "tx": "payout(after disprove)",
+    "txid": "19e21618ff96520e2d83d577c48806d3d0117d7067d27c5d343a030096eae714",
+    "vbytes": 711,
+    "weight": 2841
+  },
+  "payout_presigned_txid": "19e21618ff96520e2d83d577c48806d3d0117d7067d27c5d343a030096eae714",
+  "refunded_sats": [
+    1999724,
+    1899724,
+    749724
+  ],
+  "scenario": "tampered",
+  "slashed_sats": 9154654,
+  "t_challenge": 6,
+  "t_refund": 30,
+  "template_outputs": [
+    {
+      "payee": "seller-alice",
+      "role": "seller",
+      "sats": 1900000
+    },
+    {
+      "payee": "seller-bob",
+      "role": "seller",
+      "sats": 1800000
+    },
+    {
+      "payee": "seller-carol",
+      "role": "seller",
+      "sats": 450000
+    },
+    {
+      "payee": "refund-buyer1",
+      "role": "refund",
+      "sats": 380000
+    },
+    {
+      "payee": "refund-buyer2",
+      "role": "refund",
+      "sats": 32000
+    },
+    {
+      "payee": "refund-buyer3",
+      "role": "refund",
+      "sats": 43000
+    },
+    {
+      "payee": "operator-fee",
+      "role": "fee",
+      "sats": 45000
+    }
+  ],
+  "template_signals_differ_from_proof": [
+    "refund[0]",
+    "refund[1]"
+  ],
+  "transactions": [
+    {
+      "inputs": 1,
+      "mempool_now": "accepted",
+      "mined_height": 218,
+      "mined_via": "mempool",
+      "note": "bond -> K + commit outputs",
+      "outputs": 43,
+      "tx": "assert_init",
+      "txid": "4ce12eaef0a24c9a3960449f110a75d5aacfdf41d43f099f5cf70fca6a4a2bb0",
+      "vbytes": 1917,
+      "weight": 7668
+    },
+    {
+      "inputs": 9,
+      "mempool_now": "accepted",
+      "mined_height": 219,
+      "mined_via": "mempool",
+      "note": "9 Winternitz batches",
+      "outputs": 1,
+      "tx": "commit[0]",
+      "txid": "aeec617d94637245af9eb9a02fb02d8f3227fa15556c679406fb592e3f1b9c91",
+      "vbytes": 90490,
+      "weight": 361957
+    },
+    {
+      "inputs": 9,
+      "mempool_now": "accepted",
+      "mined_height": 219,
+      "mined_via": "mempool",
+      "note": "9 Winternitz batches",
+      "outputs": 1,
+      "tx": "commit[1]",
+      "txid": "d3af9d44e3ce6291b5bb13c4617dce7b6c063a8bb5e34744dd8ac582b3b6b1bf",
+      "vbytes": 92272,
+      "weight": 369086
+    },
+    {
+      "inputs": 9,
+      "mempool_now": "accepted",
+      "mined_height": 219,
+      "mined_via": "mempool",
+      "note": "9 Winternitz batches",
+      "outputs": 1,
+      "tx": "commit[2]",
+      "txid": "3d0e3847c5eedcb7914727113406db0a477475d45e7e272d4bfc976a41ad9d85",
+      "vbytes": 92270,
+      "weight": 369077
+    },
+    {
+      "inputs": 9,
+      "mempool_now": "accepted",
+      "mined_height": 219,
+      "mined_via": "mempool",
+      "note": "9 Winternitz batches",
+      "outputs": 1,
+      "tx": "commit[3]",
+      "txid": "8d81709471c10dd36eeea6da3a4a83cd39924affc1dfda4b42ff06ac234a09d9",
+      "vbytes": 92267,
+      "weight": 369066
+    },
+    {
+      "inputs": 6,
+      "mempool_now": "accepted",
+      "mined_height": 219,
+      "mined_via": "mempool",
+      "note": "6 Winternitz batches",
+      "outputs": 1,
+      "tx": "commit[4]",
+      "txid": "66a3e180982509128dc2413339e386b0f25c541a27e45679e291ad06246c1ba3",
+      "vbytes": 53058,
+      "weight": 212232
+    },
+    {
+      "inputs": 6,
+      "mempool_now": "accepted",
+      "mined_height": 220,
+      "mined_via": "mempool",
+      "note": "K + connectors -> A",
+      "outputs": 1,
+      "tx": "assert_final",
+      "txid": "6352f78e64b3bde0478364f2bf5f95050e756b00d5fa89d02fac2cfccecc317c",
+      "vbytes": 399,
+      "weight": 1594
+    },
+    {
+      "inputs": 1,
+      "mempool_now": "tx-size",
+      "mined_height": 221,
+      "mined_via": "generateblock",
+      "note": "BitVM chunk 431 of 432",
+      "outputs": 1,
+      "tx": "disprove",
+      "txid": "635c0569dd5a2a40c0534279ae5171b59d43fdac05a0b92bafb4a3f2c7bb9d2d",
+      "vbytes": 238931,
+      "weight": 955722
+    },
+    {
+      "note": "A already spent",
+      "rejected_block": "TestBlockValidity failed: bad-txns-inputs-missingorspent, CheckTxInputs: inputs missing/spent in transaction 19e21618ff96520e2d83d577c48806d3d0117d7067d27c5d343a030096eae714",
+      "rejected_mempool": "missing-inputs",
+      "tx": "payout(after disprove)",
+      "txid": "19e21618ff96520e2d83d577c48806d3d0117d7067d27c5d343a030096eae714",
+      "vbytes": 711,
+      "weight": 2841
+    },
+    {
+      "note": "one block before T_refund",
+      "rejected_block": "TestBlockValidity failed: bad-txns-nonfinal, contains a non-BIP68-final transaction 1c78fb48147158bae1abe5df2a8d90cce667b5f41adf69e7520f70eeca66c378",
+      "rejected_mempool": "non-BIP68-final",
+      "tx": "refund(early)",
+      "txid": "1c78fb48147158bae1abe5df2a8d90cce667b5f41adf69e7520f70eeca66c378",
+      "vbytes": 138,
+      "weight": 549
+    },
+    {
+      "inputs": 1,
+      "mempool_now": "accepted",
+      "mined_height": 246,
+      "mined_via": "mempool",
+      "note": "escrow refund leaf after T_refund",
+      "outputs": 1,
+      "tx": "refund[buyer1]",
+      "txid": "d1cb4843f1eb8ac5a133128eb1ea3c6493dc6d8c3fe9cef2115178731729235f",
+      "vbytes": 138,
+      "weight": 549
+    },
+    {
+      "inputs": 1,
+      "mempool_now": "accepted",
+      "mined_height": 246,
+      "mined_via": "mempool",
+      "note": "escrow refund leaf after T_refund",
+      "outputs": 1,
+      "tx": "refund[buyer2]",
+      "txid": "63eb5aeea8a1af13a2c3659292035213ecb94ae14852d656de4b6dece3c081c2",
+      "vbytes": 138,
+      "weight": 549
+    },
+    {
+      "inputs": 1,
+      "mempool_now": "accepted",
+      "mined_height": 246,
+      "mined_via": "mempool",
+      "note": "escrow refund leaf after T_refund",
+      "outputs": 1,
+      "tx": "refund[buyer3]",
+      "txid": "1c78fb48147158bae1abe5df2a8d90cce667b5f41adf69e7520f70eeca66c378",
+      "vbytes": 138,
+      "weight": 549
+    }
+  ]
+}

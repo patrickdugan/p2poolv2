@@ -1,0 +1,31 @@
+[time] partial disprove scripts: 12.0 s
+[time] full tapscripts: 20.4 s
+prepare: 33.13 s, 3444400 KiB max RSS
+== scenario honest
+[time] partial disprove scripts: 11.5 s
+[time] full tapscripts: 6.9 s
+[time] challenger validates the honest assertion: 329.1 s
+scenario honest: 602.45 s, 13049124 KiB max RSS
+== scenario tampered
+[time] partial disprove scripts: 13.9 s
+[time] full tapscripts: 8.0 s
+[time] challenger validates: 154.6 s
+scenario tampered: 320.81 s, 13051004 KiB max RSS
+== scenario mismatch
+[time] partial disprove scripts: 17.4 s
+[time] full tapscripts: 7.6 s
+[time] challenger validates: 156.0 s
+scenario mismatch: 187.42 s, 12998140 KiB max RSS
+== scenario plus-r
+[time] partial disprove scripts: 16.5 s
+[time] full tapscripts: 5.5 s
+[time] challenger validates: 131.0 s
+scenario plus-r: 374.15 s, 13005572 KiB max RSS
+== scenario stall
+scenario stall: 2.90 s, 6696 KiB max RSS
+clean prepare: [time] partial disprove scripts: 309.3 s
+clean prepare: [time] full tapscripts: 4.8 s
+clean prepare: [time] assertions honest: 222.8 s
+clean prepare: [time] assertions tampered: 329.3 s
+clean prepare: prepare: 868.69 s, 13035792 KiB max RSS
+selftest --all-plus-r: 767.47 s, 12988376 KiB max RSS

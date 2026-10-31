@@ -1,0 +1,248 @@
+{
+  "a_confirmed_height": 207,
+  "a_tree": {
+    "binding_leaves": 18,
+    "bitvm_leaf_bytes_total": 1289259813,
+    "bitvm_leaves": 432,
+    "depth": 9,
+    "leaves": 451
+  },
+  "asserted_differs_from_template": [],
+  "asserted_public_signal_bytes": [
+    "72f8ad182e07c89af7430a17f76548ab28002fa083cab8879923542dc74609ad",
+    "0000000000000000000000000000000000000000000000000000000000e14808",
+    "0000000000000000000000000000000000000000000000000000000000c1df0e",
+    "0000000000000000000000000000000000000000000000000000000000b0170b",
+    "0000000000000000000000000000000000000000000000000000000000000000",
+    "000000000000000000000000000000000000000000000000000000000000e402",
+    "0000000000000000000000000000000000000000000000000000000000006405",
+    "000000000000000000000000000000000000000000000000000000000000b185",
+    "0000000000000000000000000000000000000000000000000000000000000000",
+    "0000000000000000000000000000000000000000000000000000000000509001",
+    "0000000000000000000000000000000000000000000000000000000000100405",
+    "0000000000000000000000000000000000000000000000000000000000007a8f",
+    "0000000000000000000000000000000000000000000000000000000000000000",
+    "0000000000000000000000000000000000000000000000000000000000f3250f",
+    "9097d4dc20a50b80f3b5bb6d1429e5490b5bf0848689ad822d95dfa68654c6c8",
+    "10e1fd4237c76ff65ead68470689f1b83e8a722f153bc5bbe62323efe3cc304d",
+    "51c92b34322d49d565dd5ba501ba1ee6bf32b04fd0ab6067b7eb82cc42858d64",
+    "0000000000000000000000000000000000000000000000000000000000000000"
+  ],
+  "bitvm_validate": "no disprovable chunk",
+  "bond_sats": 10000000,
+  "escrow_last_funded_height": 203,
+  "escrows": [
+    {
+      "buyer": "buyer1",
+      "outpoint": "edd079166c1c36bc5511efa874808e5263ef380ecf2370882ed03a1a5c16a2e1:0",
+      "sats": 2000000
+    },
+    {
+      "buyer": "buyer2",
+      "outpoint": "ffda4de3598b0503e525c61decdc31d58283a511be5b6f326f98b2c0644a8743:0",
+      "sats": 1900000
+    },
+    {
+      "buyer": "buyer3",
+      "outpoint": "b941f24956a277e5277f82de7a77b740b773d024858fe911bb83f247ab47ceec:1",
+      "sats": 750000
+    }
+  ],
+  "fee_rate_sat_per_vb": 2,
+  "negative_binding": {
+    "note": "honest commitment against its own binding leaf",
+    "rejected_block": "TestBlockValidity failed: block-script-verify-flag-failed (Script evaluated without error but finished with a false/empty top stack element), input 0 of 6c11550dc94bd5d9d19e51ef7912cb64e2f919f93dc980460cc307e701841349 (wtxid 1b1a36ed5fbf9105d51575a1ba007f9a06a6745cb81c23635e6e08fda50b2b2d), spending 87db453415012ad76073ec968ba8a6492c1307c1a52b2366c117b635c674f506:0",
+    "rejected_mempool": "mempool-script-verify-flag-failed (Script evaluated without error but finished with a false/empty top stack element)",
+    "tx": "disprove(binding refund[0])",
+    "txid": "6c11550dc94bd5d9d19e51ef7912cb64e2f919f93dc980460cc307e701841349",
+    "vbytes": 3159,
+    "weight": 12634
+  },
+  "negative_early_payout": {
+    "note": "before T_challenge",
+    "rejected_block": "TestBlockValidity failed: bad-txns-nonfinal, contains a non-BIP68-final transaction 7e0835d1f40ac563f83b046a089be05a57ecb60a4247bb40d5bdf2fed8b18a78",
+    "rejected_mempool": "non-BIP68-final",
+    "tx": "payout(early)",
+    "txid": "7e0835d1f40ac563f83b046a089be05a57ecb60a4247bb40d5bdf2fed8b18a78",
+    "vbytes": 711,
+    "weight": 2841
+  },
+  "negative_final_chunk": {
+    "note": "honest witness for the validating leaf",
+    "rejected_block": "TestBlockValidity failed: block-script-verify-flag-failed (Script evaluated without error but finished with a false/empty top stack element), input 0 of 13f5de1e3f6d451e363a4ef1fb3c7912f87faf8472dab24f4ec762b82f60e6b0 (wtxid 6ea9ff88bd01ed39c02329a88a22c7df373387096143b6539b1f00ccd4cb499b), spending 87db453415012ad76073ec968ba8a6492c1307c1a52b2366c117b635c674f506:0",
+    "rejected_mempool": "tx-size",
+    "tx": "disprove(final chunk)",
+    "txid": "13f5de1e3f6d451e363a4ef1fb3c7912f87faf8472dab24f4ec762b82f60e6b0",
+    "vbytes": 238931,
+    "weight": 955723
+  },
+  "payout_height_minus_a_height": 6,
+  "payout_outputs_equal_template": true,
+  "payout_presigned_txid": "7e0835d1f40ac563f83b046a089be05a57ecb60a4247bb40d5bdf2fed8b18a78",
+  "scenario": "honest",
+  "t_challenge": 6,
+  "t_refund": 30,
+  "template_outputs": [
+    {
+      "payee": "seller-alice",
+      "role": "seller",
+      "sats": 1900000
+    },
+    {
+      "payee": "seller-bob",
+      "role": "seller",
+      "sats": 1800000
+    },
+    {
+      "payee": "seller-carol",
+      "role": "seller",
+      "sats": 450000
+    },
+    {
+      "payee": "refund-buyer1",
+      "role": "refund",
+      "sats": 330000
+    },
+    {
+      "payee": "refund-buyer2",
+      "role": "refund",
+      "sats": 82000
+    },
+    {
+      "payee": "refund-buyer3",
+      "role": "refund",
+      "sats": 43000
+    },
+    {
+      "payee": "operator-fee",
+      "role": "fee",
+      "sats": 45000
+    }
+  ],
+  "template_signals_differ_from_proof": [],
+  "transactions": [
+    {
+      "inputs": 1,
+      "mempool_now": "accepted",
+      "mined_height": 205,
+      "mined_via": "mempool",
+      "note": "bond -> K + commit outputs",
+      "outputs": 43,
+      "tx": "assert_init",
+      "txid": "048865297f39dacbd87ae8e327b26f0aee255d104d2e4801fbe5a064316d178e",
+      "vbytes": 1917,
+      "weight": 7668
+    },
+    {
+      "inputs": 9,
+      "mempool_now": "accepted",
+      "mined_height": 206,
+      "mined_via": "mempool",
+      "note": "9 Winternitz batches",
+      "outputs": 1,
+      "tx": "commit[0]",
+      "txid": "87744c343e5182b3c719322e0d5328fd7a387aae1fd5331b95afc3db4c791b90",
+      "vbytes": 90483,
+      "weight": 361931
+    },
+    {
+      "inputs": 9,
+      "mempool_now": "accepted",
+      "mined_height": 206,
+      "mined_via": "mempool",
+      "note": "9 Winternitz batches",
+      "outputs": 1,
+      "tx": "commit[1]",
+      "txid": "5313d229a3bcb8e19fbc7beb1768ce734ae25498a1bf7e4d95362589364453c9",
+      "vbytes": 92264,
+      "weight": 369056
+    },
+    {
+      "inputs": 9,
+      "mempool_now": "accepted",
+      "mined_height": 206,
+      "mined_via": "mempool",
+      "note": "9 Winternitz batches",
+      "outputs": 1,
+      "tx": "commit[2]",
+      "txid": "a276ce21f0ab86c57cb284df1748b8f41a66e80d8c47b6ab248209429b5d736e",
+      "vbytes": 92267,
+      "weight": 369068
+    },
+    {
+      "inputs": 9,
+      "mempool_now": "accepted",
+      "mined_height": 206,
+      "mined_via": "mempool",
+      "note": "9 Winternitz batches",
+      "outputs": 1,
+      "tx": "commit[3]",
+      "txid": "1183632bc4d529ae9ca1c7fb97496d2b168fe93d96e7793611565abdb13cc875",
+      "vbytes": 92269,
+      "weight": 369073
+    },
+    {
+      "inputs": 6,
+      "mempool_now": "accepted",
+      "mined_height": 206,
+      "mined_via": "mempool",
+      "note": "6 Winternitz batches",
+      "outputs": 1,
+      "tx": "commit[4]",
+      "txid": "10c7a16fa407800577e6c22ac9d0032f6bcdb157a9f19ed7e7f8bce1583da3b0",
+      "vbytes": 53051,
+      "weight": 212202
+    },
+    {
+      "inputs": 6,
+      "mempool_now": "accepted",
+      "mined_height": 207,
+      "mined_via": "mempool",
+      "note": "K + connectors -> A",
+      "outputs": 1,
+      "tx": "assert_final",
+      "txid": "87db453415012ad76073ec968ba8a6492c1307c1a52b2366c117b635c674f506",
+      "vbytes": 399,
+      "weight": 1594
+    },
+    {
+      "note": "honest witness for the validating leaf",
+      "rejected_block": "TestBlockValidity failed: block-script-verify-flag-failed (Script evaluated without error but finished with a false/empty top stack element), input 0 of 13f5de1e3f6d451e363a4ef1fb3c7912f87faf8472dab24f4ec762b82f60e6b0 (wtxid 6ea9ff88bd01ed39c02329a88a22c7df373387096143b6539b1f00ccd4cb499b), spending 87db453415012ad76073ec968ba8a6492c1307c1a52b2366c117b635c674f506:0",
+      "rejected_mempool": "tx-size",
+      "tx": "disprove(final chunk)",
+      "txid": "13f5de1e3f6d451e363a4ef1fb3c7912f87faf8472dab24f4ec762b82f60e6b0",
+      "vbytes": 238931,
+      "weight": 955723
+    },
+    {
+      "note": "honest commitment against its own binding leaf",
+      "rejected_block": "TestBlockValidity failed: block-script-verify-flag-failed (Script evaluated without error but finished with a false/empty top stack element), input 0 of 6c11550dc94bd5d9d19e51ef7912cb64e2f919f93dc980460cc307e701841349 (wtxid 1b1a36ed5fbf9105d51575a1ba007f9a06a6745cb81c23635e6e08fda50b2b2d), spending 87db453415012ad76073ec968ba8a6492c1307c1a52b2366c117b635c674f506:0",
+      "rejected_mempool": "mempool-script-verify-flag-failed (Script evaluated without error but finished with a false/empty top stack element)",
+      "tx": "disprove(binding refund[0])",
+      "txid": "6c11550dc94bd5d9d19e51ef7912cb64e2f919f93dc980460cc307e701841349",
+      "vbytes": 3159,
+      "weight": 12634
+    },
+    {
+      "note": "before T_challenge",
+      "rejected_block": "TestBlockValidity failed: bad-txns-nonfinal, contains a non-BIP68-final transaction 7e0835d1f40ac563f83b046a089be05a57ecb60a4247bb40d5bdf2fed8b18a78",
+      "rejected_mempool": "non-BIP68-final",
+      "tx": "payout(early)",
+      "txid": "7e0835d1f40ac563f83b046a089be05a57ecb60a4247bb40d5bdf2fed8b18a78",
+      "vbytes": 711,
+      "weight": 2841
+    },
+    {
+      "inputs": 4,
+      "mempool_now": "accepted",
+      "mined_height": 213,
+      "mined_via": "mempool",
+      "note": "A after T_challenge + every escrow",
+      "outputs": 8,
+      "tx": "payout",
+      "txid": "7e0835d1f40ac563f83b046a089be05a57ecb60a4247bb40d5bdf2fed8b18a78",
+      "vbytes": 711,
+      "weight": 2841
+    }
+  ]
+}

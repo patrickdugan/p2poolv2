@@ -1,0 +1,49 @@
+circuit: accounting16x4_committed
+git: unknown (uncommitted changes)
+circom: circom compiler 2.2.2
+node: v22.12.0  snarkjs: 0.7.5
+setup: INSECURE deterministic beacon, power 14, beacon 5ea82d8c6d749f711f35507f7adb4b2a94fafc771a9cd425d47bb193b2cf6466
+
+compile                          5.35 s    811796 KiB max RSS
+ [39;1msnarkJS[0m: # of Wires: 8923
+ [39;1msnarkJS[0m: # of Constraints: 9004
+ [39;1msnarkJS[0m: # of Private Inputs: 153
+ [39;1msnarkJS[0m: # of Public Inputs: 17
+ [39;1msnarkJS[0m: # of Outputs: 1
+field check: witness.BN254_FR matches the circuit prime
+
+invalid fixtures (witness calculator must reject):
+  rejected active_buyer_without_sales: Error in template ClearingAmounts_2 line: 92
+  rejected active_sale_unassigned: Error in template ClearingAmounts_2 line: 67
+  rejected empty_batch: Error in template ClearingAmounts_2 line: 73
+  rejected funding_mismatch: Error in template ClearingAmounts_2 line: 97
+  rejected negative_price: Error in template Bits51_0 line: 16
+  rejected nonbinary_selector: Error in template ClearingAmounts_2 line: 64
+  rejected padding_slot_with_sale_id: Error in template CommittedClearing_158 line: 67
+  rejected padding_slot_with_seller_id: Error in template CommittedClearing_158 line: 68
+  rejected price_above_max: Error in template Bits51_0 line: 16
+  rejected priced_padding_slot: Error in template ClearingAmounts_2 line: 59
+  rejected refund_above_max: Error in template Bits51_0 line: 16
+  rejected refund_inflated: Error in template ClearingAmounts_2 line: 97
+  rejected sale_assigned_twice: Error in template ClearingAmounts_2 line: 67
+  rejected total_payout_mismatch: Error in template ClearingAmounts_2 line: 74
+  rejected unused_escrow_with_buyer_id: Error in template CommittedClearing_158 line: 47
+  rejected wrong_price_inverse: Error in template ClearingAmounts_2 line: 60
+  rejected zero_price_active_sale: Error in template ClearingAmounts_2 line: 60
+ptau new + beacon + prepare     84.46 s    504536 KiB max RSS
+groth16 setup + beacon          27.76 s    590612 KiB max RSS
+
+proving key: 10464674 bytes
+verifying key: 6041 bytes JSON, sha256 3d5030f9fb7c785b5d3d0ce14d958b051293008edde6d6dcabba14b8533494ec
+groth16 prove                    1.68 s    728416 KiB max RSS
+groth16 verify (CLI)             0.94 s    303372 KiB max RSS
+proof: 2 G1 + 1 G2 = 256 bytes uncompressed; public signals: 18
+valid proof: verified
+re-split sale list: proves different public signals
+saleCommitment (circomlibjs, honest sale list): 21000525695838522690548662922530392965055393746558902069273421524933022625113
+valid proof: saleCommitment matches circomlibjs
+re-split proof: saleCommitment differs, so a verifier holding the honest sale list rejects it
+tampered public signal: rejected
+public signal + r: rejected by snarkjs
+forged witness: R1CS check rejects it (aborting checking process at constraint 8799)
+forged witness proof: produced, rejected by the verifier
