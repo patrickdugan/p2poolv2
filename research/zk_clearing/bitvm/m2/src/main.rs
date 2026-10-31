@@ -147,7 +147,7 @@ impl Trace {
         let all_standard = named.iter().all(|(_, t)| rpc.test_accept(t).is_ok());
         let how = if all_standard {
             for (_, t) in named {
-                rpc.send(t).unwrap();
+                send(rpc, t).unwrap();
             }
             rpc.mine(1, miner);
             "mempool"
@@ -180,6 +180,13 @@ fn rpc_from_env() -> rpc::Rpc {
     let var = |k: &str, d: &str| std::env::var(k).unwrap_or_else(|_| d.to_string());
     let node = rpc::Rpc::new(&var("ZKC_RPC_URL", "http://127.0.0.1:18743"), &var("ZKC_RPC_USER", "zkc"), &var("ZKC_RPC_PASS", "zkc-m1-regtest"));
     node.wallet(&var("ZKC_WALLET", "m1"))
+}
+
+/// sendrawtransaction with maxburnamount set to BURN. Core refuses an OP_RETURN output with
+/// value above maxburnamount (default 0) in this RPC only; testmempoolaccept and relay accept it.
+fn send(rpc: &rpc::Rpc, t: &Transaction) -> Result<(), String> {
+    let burn_btc = bitcoin::Amount::from_sat(BURN).to_btc();
+    rpc.try_call("sendrawtransaction", json!([bitcoin::consensus::encode::serialize_hex(t), 0, burn_btc])).map(|_| ())
 }
 
 /// Mines empty blocks until the tip is at `tip`.
@@ -559,13 +566,13 @@ fn post_assert_chain(rpc: &rpc::Rpc, miner: &Address, trace: &mut Trace, chain: 
     let names: Vec<String> = (0..commits.len()).map(|k| format!("commit[{k}]")).collect();
     let mut start = 0;
     if probe {
-        rpc.send(&chain.assert_init).unwrap();
+        send(rpc, &chain.assert_init).unwrap();
         let mut mined = vec![("assert_init", &chain.assert_init)];
         let first = trace.record(rpc, &names[0], &commits[0], &format!("{} Winternitz batches; parent unconfirmed", chain.groups[0].len()));
         let verdict = |r: Result<(), String>| r.map(|()| "accepted".to_string()).unwrap_or_else(|e| e);
         facts["mempool_probe_first_commit_with_unconfirmed_parent"] = json!(verdict(first.clone()));
         if first.is_ok() {
-            rpc.send(&commits[0]).unwrap();
+            send(rpc, &commits[0]).unwrap();
             let second = verdict(rpc.test_accept(&commits[1]));
             eprintln!("  commit[1] beside an unconfirmed assert_init and commit[0]: {second}");
             facts["mempool_probe_second_commit_with_unconfirmed_parent"] = json!(second);
