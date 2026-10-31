@@ -1,8 +1,8 @@
-# BitVM M1 for the zk_clearing circuit. Build with scripts/build.sh, which puts a patched
+# BitVM M1 and M2 for the zk_clearing circuit. Build with scripts/build.sh, which puts a patched
 # BitVM c620dbf checkout at vendor/BitVM (patches/0001-bitvm-18-public-inputs.patch).
 [workspace]
 resolver = "2"
-members = ["convert", "m1"]
+members = ["convert", "m1", "m2"]
 # BitVM keeps its own workspace (its crates inherit dependencies from it).
 exclude = ["vendor"]
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the M1 workspace in a native Linux directory (WSL: not /mnt/*, which is slow).
+# Build the M1 and M2 workspace in a native Linux directory (WSL: not /mnt/*, which is slow).
 #
 # Usage: bash research/zk_clearing/bitvm/scripts/build.sh <work dir> [cargo test args...]
 #
@@ -37,4 +37,4 @@ export CARGO_TARGET_DIR="$WORK/target"
 cargo build --release
 cargo test --release "$@"
 cp Cargo.lock "$HERE/Cargo.lock"
-echo "built: $CARGO_TARGET_DIR/release/zkc-convert $CARGO_TARGET_DIR/release/zkc-m1"
+echo "built: $CARGO_TARGET_DIR/release/zkc-convert $CARGO_TARGET_DIR/release/zkc-m1 $CARGO_TARGET_DIR/release/zkc-m2"

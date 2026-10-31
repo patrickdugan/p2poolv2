@@ -1,6 +1,6 @@
 # Roadmap: proof-backed share clearing
 
-Written 2026-11-01, after M1.
+Written 2026-11-01, after M1; updated after M2.
 
 **The question.** Can batched, proof-backed clearing of share sales between miners and market
 makers beat P2Poolv2's bilateral atomic swaps on cost or on guarantees?
@@ -16,6 +16,7 @@ Numbers marked *est.* are arithmetic on the measurements so far, not runs.
 |---|---|---|
 | M0 | v0 and v1 circuits (16 sales × 4 buyers; v1 is 9,004 constraints) with a Poseidon commitment to the sale list. A reproducible Groth16 pipeline; real proofs verify; invalid, tampered, forged and x + r inputs are rejected | [GROTH16.md](GROTH16.md) |
 | M1 | The v1 proof settles on regtest through BitVM's chunked verifier, patched to 18 public inputs. The honest, tampered, mismatch, plus-r and stall scenarios all behave correctly | [bitvm/M1.md](bitvm/M1.md) |
+| M2 | The optimistic BitVM2 graph on regtest: kickoff, a challenge anyone can post, payout with no assert when unchallenged, assert-timeout slash, a half-bond burn on every slash, timeouts set against each other and a reorg policy. The honest unchallenged batch costs 897 vB on chain | [bitvm/M2.md](bitvm/M2.md) |
 
 What M1 taught:
 
@@ -31,25 +32,21 @@ What M1 taught:
 - **Two economic terms are still unbound:** the fee budget and the seller payout scripts. An
   operator can honestly prove a statement that moves value from a refund into the fee.
 
+What M2 taught:
+
+- **The gate passes.** The honest unchallenged batch costs 897 vB: a kickoff and one payout,
+  about 423 vB plus 57.5 vB per escrow and 43 vB per payee output. That is 472 times less than
+  M1. A challenge still costs about 423 kvB, paid by the challenger.
+- **The fees freeze at signing.** The committee's signatures fix the fees of the payouts and the
+  assert chain, and the assert chain has no output to bump from. If fees rise during a challenge,
+  an honest operator can be slashed. Fee bumping (M8) is a safety issue, not only a cost one.
+- **The bond has to scale with the fee rate.** A fraud-proving challenger pays for the assert
+  and for the disprove, up to about 1.41 MvB together. With half of a 0.1 BTC bond as the reward,
+  it breaks even only up to about 3.5 sat/vB, *est.*
+- **A slash needs `maxburnamount`.** Core's `sendrawtransaction` refuses the burn output unless
+  the poster raises `maxburnamount`. Relay policy accepts it.
+
 ## Next
-
-### M2: the optimistic BitVM2 graph (do first)
-
-Build the honest path the protocol is meant to have:
-
-- **Kickoff:** the operator claims the batch.
-- **Challenge window:** anyone may post a challenge, which forces the assert.
-- **Payout without a challenge:** the payout spends after the window.
-- **Penalties:** an assert timeout slashes an operator who is challenged and goes silent.
-  Burning part of the bond keeps a miner from taking all of it by challenging itself.
-- **Timing:** set the challenge, assert and refund timeouts against each other.
-- **Reorgs:** a stated policy for the depth at which each step counts as final.
-
-Measure the vbytes of the honest path (expected to be on the order of 1–2 kvB per batch plus
-about 43 vB per payee output, *est.*) and of the challenged path.
-
-**Gate.** If the honest path is not far below M1's 423 kvB, stop and find out why before going
-further.
 
 ### M3: one public input
 
@@ -137,5 +134,5 @@ M5 ownership ────────────────┤ (M5 can follow 
 M6 batch size ───────────────┘
 ```
 
-M2 and M3 change only the BitVM side and can run in parallel. M4 changes the circuit and the
+M3 changes only the BitVM side. M4 changes the circuit and the
 template.

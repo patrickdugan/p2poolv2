@@ -1,0 +1,31 @@
+{
+  "assert_blocks": 3,
+  "margin": 2,
+  "slack_blocks": [
+    {
+      "blocks": 5,
+      "constraint": "challenge: blocks to get a challenge mined after the kickoff"
+    },
+    {
+      "blocks": 6,
+      "constraint": "unchallenged payout: blocks before the timeout opens"
+    },
+    {
+      "blocks": 3,
+      "constraint": "assert: blocks to spare after a last-block challenge"
+    },
+    {
+      "blocks": 6,
+      "constraint": "disprove: blocks to get a disprove mined after A"
+    },
+    {
+      "blocks": 7,
+      "constraint": "refund: blocks the latest payout has before refunds open"
+    }
+  ],
+  "t_assert": 12,
+  "t_challenge": 6,
+  "t_disprove": 6,
+  "t_kickoff": 6,
+  "t_refund": 30
+}
