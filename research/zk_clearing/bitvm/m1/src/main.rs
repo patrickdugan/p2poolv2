@@ -1,6 +1,10 @@
 //! BitVM M1 for zk_clearing: assert the 18 public signals of an accounting16x4_committed
 //! Groth16 proof on Bitcoin regtest, and settle by a payout template, a disprove, or a timeout.
 //!
+//! Built against BitVM with NUM_PUBS = 1 (patches/0002, M3), the same harness asserts the
+//! single public signal of accounting16x4_hashed, statementHash, and the payout template is
+//! built from the statement that hashes to it (<work>/batch/statement.json).
+//!
 //! Usage:
 //!   zkc-m1 prepare  <work>             disprove scripts and assertions (cached under <work>/m1)
 //!   zkc-m1 selftest <work>             script-level checks, no node
@@ -29,8 +33,14 @@ use taproot::{key_path_script, leaf_hash, ScriptTree};
 
 /// Stack items allowed per commit input; consensus allows 1,000 including temporaries.
 const COMMIT_MAX_ITEMS: usize = 900;
-/// The signal the plus-r scenario re-encodes as x + r: refund[1].
-const PLUS_R_SIGNAL: usize = template::refund(1);
+/// M3: the proof's only public signal is statementHash. M1: the 18 statement values are public.
+const HASHED: bool = NUM_PUBS == 1;
+const _: () = assert!(NUM_PUBS == 1 || NUM_PUBS == template::NUM_SIGNALS);
+/// The public signal the plus-r scenario re-encodes as x + r: refund[1] (M1), statementHash (M3).
+const PLUS_R_SIGNAL: usize = if HASHED { 0 } else { template::refund(1) };
+/// The public signal whose binding leaf the mismatch scenario opens: refund[0] (M1),
+/// statementHash (M3).
+const MISMATCH_SIGNAL: usize = if HASHED { 0 } else { template::refund(0) };
 /// The tampered statement: 50,000 sats of refund moved from buyer slot 1 to slot 0. Total
 /// conservation still holds, so the template accepts it; buyer slot 0's own equation
 /// funding = cost + fee + refund fails, so no valid proof exists for it.
@@ -40,7 +50,10 @@ struct Inputs {
     work: PathBuf,
     vk: VerifyingKey<Bn254>,
     proof: Proof<Bn254>,
+    /// The proof's public signals (NUM_PUBS of them).
     signals: Vec<BigUint>,
+    /// The 18-value clearing statement: `signals` itself in M1, its hash preimage in M3.
+    statement: Vec<BigUint>,
     input: Value,
     opening: Value,
     commitment: BigUint,
@@ -57,15 +70,51 @@ fn load(work: &Path) -> Inputs {
     let public = read_json(&batch.join("public.json"));
     let fr = zkc_convert::public_from_snarkjs(&public).unwrap();
     assert!(zkc_convert::verify(&vk, &proof, &fr).unwrap(), "batch proof must verify under ark-groth16");
+    let signals = zkc_convert::public_integers(&public).unwrap();
+    assert_eq!(signals.len(), NUM_PUBS, "public signals of the batch proof");
+    let statement = if HASHED {
+        zkc_convert::public_integers(&read_json(&batch.join("statement.json"))["statement"]).unwrap()
+    } else {
+        signals.clone()
+    };
+    assert_eq!(public_of(&statement), signals, "the statement does not match the proof's public signals");
     Inputs {
         work: work.to_path_buf(),
         vk,
         proof,
-        signals: zkc_convert::public_integers(&public).unwrap(),
+        signals,
+        statement,
         input: read_json(&batch.join("input.json")),
         opening: read_json(&batch.join("opening.json")),
         commitment: std::fs::read_to_string(batch.join("sale_commitment.txt")).unwrap().trim().parse().unwrap(),
     }
+}
+
+/// The public signals a proof of `statement` carries.
+fn public_of(statement: &[BigUint]) -> Vec<BigUint> {
+    if HASHED {
+        vec![template::statement_hash(statement).expect("statement hash")]
+    } else {
+        statement.to_vec()
+    }
+}
+
+fn public_name(i: usize) -> String {
+    if HASHED {
+        "statementHash".into()
+    } else {
+        template::signal_name(i)
+    }
+}
+
+/// The committee's payout template for `statement`; in M3 it also checks the hash preimage.
+fn template_for(inp: &Inputs, statement: &[BigUint]) -> template::Template {
+    let built = if HASHED {
+        template::build_hashed(&public_of(statement)[0], statement, &inp.input, &inp.opening, &inp.commitment)
+    } else {
+        template::build(statement, &inp.input, &inp.opening, &inp.commitment)
+    };
+    built.expect("template")
 }
 
 fn tampered(signals: &[BigUint]) -> Vec<BigUint> {
@@ -107,13 +156,13 @@ fn honest_assertions(inp: &Inputs) -> Assertions {
 }
 
 fn tampered_assertions(inp: &Inputs) -> Assertions {
-    cached_assertions(inp, "tampered", || chunked::any_assertions(&inp.proof, &tampered(&inp.signals), &inp.vk))
+    cached_assertions(inp, "tampered", || chunked::any_assertions(&inp.proof, &public_of(&tampered(&inp.statement)), &inp.vk))
 }
 
 fn plus_r_assertions(inp: &Inputs, signal: usize) -> Assertions {
     let mut a = honest_assertions(inp);
     for i in 0..NUM_PUBS {
-        assert_eq!(a.0[chunked::pub_slot(i)], chunked::u256_assertion(&inp.signals[i]), "assertion encoding of {}", template::signal_name(i));
+        assert_eq!(a.0[chunked::pub_slot(i)], chunked::u256_assertion(&inp.signals[i]), "assertion encoding of {}", public_name(i));
     }
     a.0[chunked::pub_slot(signal)] = chunked::u256_assertion(&(&inp.signals[signal] + zkc_convert::fr_modulus()));
     a
@@ -138,6 +187,11 @@ fn prepare(inp: &Inputs) {
         inp,
         "leaves",
         &json!({
+            "num_pubs": NUM_PUBS,
+            "num_u256": bitvm::chunk::api::NUM_U256,
+            "num_hash": bitvm::chunk::api::NUM_HASH,
+            "winternitz_values": chunked::NUM_VALUES,
+            "commit_batches": chunked::commit_batches(COMMIT_MAX_ITEMS).len(),
             "disprove_leaves": NUM_TAPS,
             "total_bytes": sizes.iter().sum::<usize>(),
             "min_bytes": sorted[0],
@@ -178,7 +232,7 @@ fn selftest(inp: &Inputs, all_plus_r: bool) {
     report["commit_max_stack_items"] = json!(max_stack);
 
     // Binding leaves: fail on the honest commitment, succeed on any other value.
-    let s_prime = tampered(&inp.signals);
+    let s_prime = public_of(&tampered(&inp.statement));
     let mut binding = vec![];
     for i in 0..NUM_PUBS {
         let leaf = chunked::binding_leaf(&pubkeys, i, &inp.signals[i]);
@@ -190,7 +244,7 @@ fn selftest(inp: &Inputs, all_plus_r: bool) {
         assert!(!honest_opens, "binding leaf {i} opens on the honest commitment");
         assert_eq!(mismatch_opens, inp.signals[i] != s_prime[i], "binding leaf {i} against S'");
         assert!(plus_r_opens, "binding leaf {i} misses x + r");
-        binding.push(json!({"signal": template::signal_name(i), "leaf_bytes": leaf.len(), "honest_opens": honest_opens,
+        binding.push(json!({"signal": public_name(i), "leaf_bytes": leaf.len(), "honest_opens": honest_opens,
             "opens_when_template_is_S_prime": mismatch_opens, "opens_on_x_plus_r": plus_r_opens}));
     }
     report["binding_leaves"] = json!(binding);
@@ -201,10 +255,10 @@ fn selftest(inp: &Inputs, all_plus_r: bool) {
         let mut sweep = vec![];
         for i in 0..NUM_PUBS {
             let sigs = chunked::sign(plus_r_assertions(inp, i), &secrets);
-            let found = timed(&format!("validate x + r on {}", template::signal_name(i)), || chunked::validate(&inp.vk, &sigs, &pubkeys, &full));
+            let found = timed(&format!("validate x + r on {}", public_name(i)), || chunked::validate(&inp.vk, &sigs, &pubkeys, &full));
             let (leaf, items) = found.unwrap_or_else(|| panic!("x + r on signal {i} not disprovable"));
             assert!(chunked::leaf_succeeds(&full[leaf], &items), "disprove witness does not open leaf {leaf}");
-            sweep.push(json!({"signal": template::signal_name(i), "disprove_leaf": leaf, "leaf_bytes": full[leaf].len(), "witness_items": items.len()}));
+            sweep.push(json!({"signal": public_name(i), "disprove_leaf": leaf, "leaf_bytes": full[leaf].len(), "witness_items": items.len()}));
             write_result(inp, "selftest-plus-r-partial", &json!(sweep));
         }
         report["plus_r_sweep"] = json!(sweep);
@@ -286,16 +340,22 @@ fn scenario(inp: &Inputs, name: &str) {
     let miner = rpc.new_address();
     let keys = Keys::new();
     let mut trace = Trace { rows: vec![] };
-    let mut facts = json!({"scenario": name, "fee_rate_sat_per_vb": FEE_RATE, "t_challenge": T_CHALLENGE, "t_refund": T_REFUND, "bond_sats": BOND});
+    let mut facts = json!({"scenario": name, "num_pubs": NUM_PUBS, "statement_hashed": HASHED, "fee_rate_sat_per_vb": FEE_RATE,
+        "t_challenge": T_CHALLENGE, "t_refund": T_REFUND, "bond_sats": BOND});
 
-    let template_signals = match name {
-        "tampered" | "mismatch" => tampered(&inp.signals),
-        _ => inp.signals.clone(),
+    let template_statement = match name {
+        "tampered" | "mismatch" => tampered(&inp.statement),
+        _ => inp.statement.clone(),
     };
-    let tpl = template::build(&template_signals, &inp.input, &inp.opening, &inp.commitment).expect("template");
+    let template_signals = public_of(&template_statement);
+    let tpl = template_for(inp, &template_statement);
     let template_outputs = outputs_of(&keys, &tpl);
     facts["template_outputs"] = json!(tpl.outputs.iter().map(|o| json!({"role": o.role, "payee": o.payee, "sats": o.amount})).collect::<Vec<_>>());
-    facts["template_signals_differ_from_proof"] = json!((0..NUM_PUBS).filter(|i| template_signals[*i] != inp.signals[*i]).map(template::signal_name).collect::<Vec<_>>());
+    facts["template_signals_differ_from_proof"] = json!((0..NUM_PUBS).filter(|i| template_signals[*i] != inp.signals[*i]).map(public_name).collect::<Vec<_>>());
+    facts["template_statement_differs_from_proof"] = json!((0..template::NUM_SIGNALS)
+        .filter(|i| template_statement[*i] != inp.statement[*i])
+        .map(template::signal_name)
+        .collect::<Vec<_>>());
 
     // Escrows, one per active buyer, and the operator's bond.
     let mut escrows = vec![];
@@ -404,7 +464,7 @@ fn scenario(inp: &Inputs, name: &str) {
     facts["asserted_public_signal_bytes"] = json!(asserted);
     facts["asserted_differs_from_template"] = json!((0..NUM_PUBS)
         .filter(|i| hex::decode(&asserted[*i]).unwrap() != chunked::u256_assertion(&template_signals[*i]))
-        .map(template::signal_name)
+        .map(public_name)
         .collect::<Vec<_>>());
 
     let challenger = payee_script(&keys, "challenger");
@@ -419,11 +479,12 @@ fn scenario(inp: &Inputs, name: &str) {
             assert!(!chunked::leaf_succeeds(&full[last], &items));
             let fake = disprove_tx(&keys, (a_outpoint, &a_out), &a_tree, last, &full[last], items, challenger.clone());
             facts["negative_final_chunk"] = trace.reject(&rpc, &miner, "disprove(final chunk)", &fake, "honest witness for the validating leaf");
-            let bind = binding_index(template::refund(0));
-            let items = chunked::binding_witness(&chain_sigs, template::refund(0));
-            assert!(!chunked::leaf_succeeds(&binding[template::refund(0)], &items));
-            let fake = disprove_tx(&keys, (a_outpoint, &a_out), &a_tree, bind, &binding[template::refund(0)], items, challenger.clone());
-            facts["negative_binding"] = trace.reject(&rpc, &miner, "disprove(binding refund[0])", &fake, "honest commitment against its own binding leaf");
+            let bind = binding_index(MISMATCH_SIGNAL);
+            let items = chunked::binding_witness(&chain_sigs, MISMATCH_SIGNAL);
+            assert!(!chunked::leaf_succeeds(&binding[MISMATCH_SIGNAL], &items));
+            let fake = disprove_tx(&keys, (a_outpoint, &a_out), &a_tree, bind, &binding[MISMATCH_SIGNAL], items, challenger.clone());
+            let label = format!("disprove(binding {})", public_name(MISMATCH_SIGNAL));
+            facts["negative_binding"] = trace.reject(&rpc, &miner, &label, &fake, "honest commitment against its own binding leaf");
 
             // Too early: A has fewer than T_challenge confirmations.
             facts["negative_early_payout"] = trace.reject(&rpc, &miner, "payout(early)", &payout, "before T_challenge");
@@ -442,9 +503,9 @@ fn scenario(inp: &Inputs, name: &str) {
                 ("mismatch", None) => {
                     // The proof verifies for what was asserted; the assertion just is not what
                     // the payout was presigned for.
-                    let i = template::refund(0);
+                    let i = MISMATCH_SIGNAL;
                     let items = chunked::binding_witness(&chain_sigs, i);
-                    (binding_index(i), binding[i].clone(), items, format!("binding leaf for {}", template::signal_name(i)))
+                    (binding_index(i), binding[i].clone(), items, format!("binding leaf for {}", public_name(i)))
                 }
                 ("mismatch", Some(f)) => panic!("honest proof disprovable at BitVM leaf {}", f.0),
                 (_, Some((k, items))) => (k, full[k].clone(), items, format!("BitVM chunk {k} of {NUM_TAPS}")),
@@ -462,7 +523,7 @@ fn scenario(inp: &Inputs, name: &str) {
             }
             let binding_opens: Vec<String> = (0..NUM_PUBS)
                 .filter(|i| chunked::leaf_succeeds(&binding[*i], &chunked::binding_witness(&chain_sigs, *i)))
-                .map(template::signal_name)
+                .map(public_name)
                 .collect();
             facts["binding_leaves_that_open"] = json!(binding_opens);
 

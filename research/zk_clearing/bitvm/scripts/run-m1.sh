@@ -5,7 +5,9 @@
 #   default scenarios: honest tampered mismatch plus-r stall
 #
 # Expects prove-batch.sh and build.sh to have run with the same <work dir>, and bitcoind and
-# bitcoin-cli on PATH (or BITCOIN_BIN=<dir>). Results land in <work>/m1/*.json.
+# bitcoin-cli on PATH (or BITCOIN_BIN=<dir>). Results land in <work>/m1/*.json. The node listens
+# for RPC on ZKC_RPC_PORT (default 18743) and for P2P on the port above it. For M3 (setup dir
+# <work>/hashed, build.sh with ZKC_PUBS=1) the same script runs the hashed statement.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -15,10 +17,13 @@ if [ $# -gt 0 ]; then SCENARIOS=("$@"); else SCENARIOS=(honest tampered mismatch
 BIN="$WORK/target/release"
 BTC="${BITCOIN_BIN:+$BITCOIN_BIN/}"
 DATADIR="$WORK/regtest"
-export ZKC_RPC_URL="http://127.0.0.1:18743" ZKC_RPC_USER=zkc ZKC_RPC_PASS=zkc-m1-regtest ZKC_WALLET=m1
-CLI=("${BTC}bitcoin-cli" -regtest -datadir="$DATADIR" -rpcport=18743 -rpcuser=zkc -rpcpassword=zkc-m1-regtest)
+PORT="${ZKC_RPC_PORT:-18743}"
+export ZKC_RPC_URL="http://127.0.0.1:$PORT" ZKC_RPC_USER=zkc ZKC_RPC_PASS=zkc-m1-regtest ZKC_WALLET=m1
+CLI=("${BTC}bitcoin-cli" -regtest -datadir="$DATADIR" -rpcport="$PORT" -rpcuser=zkc -rpcpassword=zkc-m1-regtest)
+SETUP="$WORK/v1"
+[ -d "$WORK/hashed" ] && SETUP="$WORK/hashed"
 
-"${BIN}/zkc-convert" "$WORK/v1/verification_key.json" "$WORK/v1/proof.json" "$WORK/v1/public.json" "$WORK/m1-convert-example.json"
+"${BIN}/zkc-convert" "$SETUP/verification_key.json" "$SETUP/proof.json" "$SETUP/public.json" "$WORK/m1-convert-example.json"
 "${BIN}/zkc-convert" "$WORK/batch/verification_key.json" "$WORK/batch/proof.json" "$WORK/batch/public.json" "$WORK/m1-convert-batch.json"
 
 /usr/bin/time -f "prepare: %e s, %M KiB max RSS" "${BIN}/zkc-m1" prepare "$WORK"
@@ -28,7 +33,7 @@ CLI=("${BTC}bitcoin-cli" -regtest -datadir="$DATADIR" -rpcport=18743 -rpcuser=zk
 rm -rf "$DATADIR"
 mkdir -p "$DATADIR"
 "${BTC}bitcoind" -regtest -datadir="$DATADIR" -daemon -txindex=1 -fallbackfee=0.0002 \
-  -rpcport=18743 -port=18744 -rpcuser=zkc -rpcpassword=zkc-m1-regtest -rpcthreads=4 \
+  -rpcport="$PORT" -port="$((PORT + 1))" -rpcuser=zkc -rpcpassword=zkc-m1-regtest -rpcthreads=4 \
   -blockmaxweight=4000000 -listen=0
 for _ in $(seq 60); do "${CLI[@]}" getblockcount >/dev/null 2>&1 && break; sleep 1; done
 "${BTC}bitcoind" -version | head -1 > "$WORK/m1/node-version.txt"

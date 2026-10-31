@@ -23,7 +23,7 @@ from example_inputs import example_circuit_inputs, resplit_sales
 from model import MAX_SATS
 from witness import BN254_FR, BUYER_SLOTS, SALE_SLOTS
 
-COMMITTED_CIRCUITS = {"accounting16x4_committed"}
+COMMITTED_CIRCUITS = {"accounting16x4_committed", "accounting16x4_hashed"}
 
 
 def _encode(inputs: dict) -> str:

@@ -1,0 +1,38 @@
+== clean prepare 2026-11-01T06:21:54+08:00
+  [time] partial disprove scripts: 192.2 s
+  [time] full tapscripts: 4.6 s
+  [time] assertions honest: 230.2 s
+  [time] assertions tampered: 260.0 s
+  clean prepare: 688.53 s, 5949780 KiB max RSS
+== scenarios 2026-11-01T06:33:22+08:00
+  [time] partial disprove scripts: 21.8 s
+  [time] full tapscripts: 18.4 s
+  prepare: 40.61 s, 2948832 KiB max RSS
+== scenario honest
+  [time] partial disprove scripts: 2.5 s
+  [time] full tapscripts: 5.8 s
+  [time] challenger validates the honest assertion: 221.8 s
+  scenario honest: 382.53 s, 3273056 KiB max RSS
+== scenario tampered
+  [time] partial disprove scripts: 16.0 s
+  [time] full tapscripts: 16.8 s
+  [time] challenger validates: 137.0 s
+  scenario tampered: 272.25 s, 3254644 KiB max RSS
+== scenario mismatch
+  [time] partial disprove scripts: 23.2 s
+  [time] full tapscripts: 22.2 s
+  [time] challenger validates: 117.9 s
+  scenario mismatch: 170.46 s, 3252536 KiB max RSS
+== scenario plus-r
+  [time] partial disprove scripts: 11.6 s
+  [time] full tapscripts: 20.5 s
+  [time] challenger validates: 3.0 s
+  scenario plus-r: 112.71 s, 3244536 KiB max RSS
+== scenario stall
+  scenario stall: 2.86 s, 6756 KiB max RSS
+== selftest 2026-11-01T06:50:09+08:00
+  [time] partial disprove scripts: 16.0 s
+  [time] full tapscripts (selftest): 37.9 s
+  [time] validate x + r on statementHash: 7.0 s
+  selftest --all-plus-r: 61.71 s, 2948320 KiB max RSS
+  build.sh: 183.15 s, 561900 KiB max RSS

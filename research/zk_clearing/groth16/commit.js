@@ -6,12 +6,9 @@
 const path = require("path");
 const fs = require("fs");
 
-async function main() {
-  const [modules, inputsPath] = process.argv.slice(2);
-  const { buildPoseidon } = require(path.join(modules, "circomlibjs"));
-  const poseidon = await buildPoseidon();
+// saleCommitment of `inputs` as a field element of circomlibjs's `poseidon`.
+function saleCommitment(poseidon, inputs) {
   const F = poseidon.F;
-  const inputs = JSON.parse(fs.readFileSync(inputsPath, "utf8"));
   const leaves = inputs.price.map((price, sale) => {
     let selectedBuyerId = F.zero;
     inputs.selector[sale].forEach((bit, buyer) => {
@@ -25,11 +22,23 @@ async function main() {
       selectedBuyerId,
     ]);
   });
-  console.log(F.toString(poseidon(leaves)));
+  return poseidon(leaves);
+}
+
+async function main() {
+  const [modules, inputsPath] = process.argv.slice(2);
+  const { buildPoseidon } = require(path.join(modules, "circomlibjs"));
+  const poseidon = await buildPoseidon();
+  const inputs = JSON.parse(fs.readFileSync(inputsPath, "utf8"));
+  console.log(poseidon.F.toString(saleCommitment(poseidon, inputs)));
   process.exit(0);
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+module.exports = { saleCommitment };
+
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+}
