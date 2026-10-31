@@ -27,10 +27,10 @@ on-chain fees are low.
 | M2 | The optimistic BitVM2 graph on regtest: kickoff, a challenge anyone can post, payout with no assert when unchallenged, assert-timeout slash, a half-bond burn on every slash, timeouts set against each other and a reorg policy. The honest unchallenged batch costs **897 vB** on chain, 472× less than M1. Six scenarios pass | [bitvm/M2.md](bitvm/M2.md) |
 | M3 | One hashed public input (`accounting16x4_hashed`, 10,078 constraints). The assert chain is **336,528 vB, 20.4% less**; 364 disprove leaves instead of 432 (1.11 GB instead of 1.29 GB); one binding leaf instead of 18; prepare peaks at 5.9 GB instead of 13.0 GB. Five scenarios pass | [bitvm/M3.md](bitvm/M3.md) |
 | M4 | Signed terms in the circuit (`clearing16x4_signed`, 108,784 constraints). EdDSA-Poseidon over BabyJubjub signs every seller order (share, price, buyer, payout script, expiry) and every buyer's escrow terms (outpoint, funding, fee cap, refund script, expiry), at about 5,000 constraints per signature; `feeBudget <= feeCap`. Proving takes 10.2 s; 8 rule-breaking fixtures are rejected. The proof now carries facts a committee cannot recompute | [signed/SIGNED.md](signed/SIGNED.md) |
-| M5 | Sharechain ownership. A 40-level Poseidon sparse Merkle tree over the sharechain's unspent outputs (about 120k live), matching circomlibjs, at 11,438 constraints per membership proof; a Groth16 proof verifies and 15 invalid inputs are rejected. A root is trusted through watchers, not disproved in BitVM | [ownership/OWNERSHIP.md](ownership/OWNERSHIP.md) |
+| M5 | Sharechain ownership. A 40-level Poseidon sparse Merkle tree over the sharechain's unspent outputs (about 120k live), matching circomlibjs, at 11,438 constraints per membership proof; a Groth16 proof verifies and 15 invalid inputs are rejected. Built from real node stores too: a 5-node P2Poolv2 sim swarm on regtest gives 77 leaves at its tip, two nodes' stores agree on the root at all 126 anchors compared, and a real share output proves membership. A root is trusted through watchers, not disproved in BitVM | [ownership/OWNERSHIP.md](ownership/OWNERSHIP.md) |
 | M6 | Batch size, with a binary Poseidon tree commitment at 16, 64, 256 and 1,024 slots. Every size proves and verifies. About 700 constraints and 34 ms of snarkjs proving per sale from 64 slots up; 1,024 sales prove in 35 s with 6.6 GiB | [scaling/SCALING.md](scaling/SCALING.md) |
 | M7 | The benchmark: 10,000 offers, 100 miners, 5 market makers, three schemes. Batch clearing beats Lightning only for about daily 1,024-sale batches, below about 3.4–7.8 sat/vB (or 15–34 against week-sized channels). It locks 12–94 BTC·h a week against Lightning's 2,794. Bilateral swaps cost 245–310 vB per sale | [benchmark/BENCHMARK.md](benchmark/BENCHMARK.md) |
-| M8 | For the mode M7 kept: a multi-party phase-2 ceremony script (3 contributors + beacon verified); a TRUC + pay-to-anchor fee bump verified on Core 31.1, so a low-fee child cannot pin; and a fee and pinning plan for every transaction in M2's graph | [m8/M8.md](m8/M8.md) |
+| M8 | For the mode M7 kept: a multi-party phase-2 ceremony script (3 contributors + beacon verified); a TRUC + pay-to-anchor fee bump verified on Core 31.1, so a low-fee child cannot pin; and a fee and pinning plan for every transaction in M2's graph. M2 and M3 already ran under mainnet relay policy (regtest requires standard transactions), with the disproves mined through a miner's own template; what only signet adds is listed in M8 section 5 | [m8/M8.md](m8/M8.md) |
 
 What M1 taught:
 
@@ -72,6 +72,8 @@ What M3 to M8 taught:
   - A root says what was true at an anchor.
   - Non-spend afterwards needs each sold output locked on the sharechain before payout, so it
     depends on sharechain validation enforcing the lock's refund timeout.
+- **A node's store is enough to build the root (M5).** The bodies a node keeps (`PRUNE_DEPTH`)
+  cover the root's window (`PAYOUT_DEPTH`), and independent stores give the same root.
 - **Proving is not the bottleneck (M6).** Fill time and the one-time setup are.
 - **The assert chain needs keyed anchors (M8).** Its commit transactions (53–92 kvB) are too
   large for TRUC, so they cannot use keyless pay-to-anchor bumping.
@@ -93,8 +95,12 @@ Engineering that can be done next without anyone else:
 Waiting on Patrick or third parties (details in M8):
 
 - a public phase-1 file (Perpetual Powers of Tau) instead of the insecure local one;
-- independent ceremony contributors and n-of-n committee signers;
-- signet funds and a P2Poolv2 signet node for the trial;
+- independent ceremony contributors and n-of-n committee signers. A MuSig2 aggregate key is
+  one BIP340 key on chain, so M2's traces already cover the chain side; what is missing is
+  independent people;
+- signet coins and a P2Poolv2 signet node for the trial. The signet faucets require CAPTCHAs;
+- a rapidsnark build to time the C++ prover on M6's 1,024-slot batch. This session's tool
+  policy refused the build;
 - presenting the results to the P2Poolv2 maintainers.
 
 ## Branches
