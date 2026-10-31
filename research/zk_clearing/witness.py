@@ -7,9 +7,11 @@ into public/private circuit inputs. It does not prove any external facts.
 from __future__ import annotations
 
 from collections import Counter
+import hashlib
 import json
 
 from model import (
+    DOMAIN,
     MAX_SATS,
     BatchPlan,
     Context,
@@ -147,6 +149,66 @@ def check_relation(inputs: dict) -> None:
         cost = sum(prices[sale] * assignment[sale][buyer] for sale in range(SALE_SLOTS))
         if funding[buyer] != cost + fees[buyer] + refunds[buyer]:
             raise InvalidBatch("buyer funding mismatch")
+
+
+def field_id(kind: str, value: str) -> int:
+    """Map an identity string to a nonzero field element below BN254_FR.
+
+    SHA-256 of a domain-separated label, truncated to 253 bits so it is
+    always smaller than the 254-bit prime. Zero is reserved for padding.
+    """
+    digest = hashlib.sha256(f"{DOMAIN}/{kind}/{value}".encode()).digest()
+    element = int.from_bytes(digest, "big") >> 3
+    if element == 0:
+        raise InvalidBatch(f"{kind} {value!r} hashes to zero")
+    return element
+
+
+def build_committed_inputs(
+    sales: tuple[Sale, ...],
+    escrows: tuple[Escrow, ...],
+    state: InputState,
+    expected_context: Context,
+    observed_bitcoin_height: int,
+) -> tuple[dict, BatchPlan]:
+    """Inputs for accounting16x4_committed.circom.
+
+    Adds saleId (share outpoint), sellerId (seller's sharechain address, which
+    owns the share output) and buyerId (escrow buyer) to the v0 inputs, in the
+    same slot order. The circuit hashes them with prices and the selected
+    buyer into the public saleCommitment.
+    """
+    inputs, plan = build_circuit_inputs(sales, escrows, state, expected_context, observed_bitcoin_height)
+    ordered_sales = sorted(sales, key=lambda sale: sale.share_outpoint)
+    ordered_escrows = sorted(escrows, key=lambda escrow: escrow.buyer_id)
+    inputs["saleId"] = [0] * SALE_SLOTS
+    inputs["sellerId"] = [0] * SALE_SLOTS
+    inputs["buyerId"] = [0] * BUYER_SLOTS
+    for index, sale in enumerate(ordered_sales):
+        inputs["saleId"][index] = field_id("share_outpoint", sale.share_outpoint)
+        inputs["sellerId"][index] = field_id("seller_share_address", sale.seller_share_address)
+    for index, escrow in enumerate(ordered_escrows):
+        inputs["buyerId"][index] = field_id("buyer", escrow.buyer_id)
+    check_committed_relation(inputs)
+    return inputs, plan
+
+
+def check_committed_relation(inputs: dict) -> None:
+    """The v0 oracle plus the identity rules of the committed circuit.
+
+    The Poseidon commitment itself is computed by the circuit and checked
+    against circomlibjs in groth16/commit.js, not here.
+    """
+    check_relation(inputs)
+    for value in (*inputs["saleId"], *inputs["sellerId"], *inputs["buyerId"]):
+        if type(value) is not int or not 0 <= value < BN254_FR:
+            raise InvalidBatch("identity out of field range")
+    for sale in range(SALE_SLOTS):
+        if not inputs["activeSale"][sale] and (inputs["saleId"][sale] or inputs["sellerId"][sale]):
+            raise InvalidBatch("padding sale slot carries an identity")
+    for buyer in range(BUYER_SLOTS):
+        if not inputs["activeBuyer"][buyer] and inputs["buyerId"][buyer]:
+            raise InvalidBatch("unused escrow slot carries an identity")
 
 
 def encode_snarkjs_input(inputs: dict) -> str:

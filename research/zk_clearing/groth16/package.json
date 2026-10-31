@@ -1,0 +1,10 @@
+{
+  "name": "p2poolv2-zk-clearing-groth16",
+  "private": true,
+  "description": "Pinned snarkjs and circomlib for the zk_clearing Groth16 experiment",
+  "dependencies": {
+    "circomlib": "2.0.5",
+    "circomlibjs": "0.1.7",
+    "snarkjs": "0.7.5"
+  }
+}
