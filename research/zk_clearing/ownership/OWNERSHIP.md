@@ -281,15 +281,14 @@ leaf (the oldest root leaving), and a delete and `c` inserts per transfer.
 
 ### 3.4 Set size under load, and the dust floor
 
-Consensus bounds the set only through the block limits. A share block holds at most 99
-non-coinbase transactions and 200 KiB, which is at most about 4,700 P2TR outputs of 43 bytes
-(*est.*). Anyone who mines shares can include such a block, and nothing sets a dust floor
-(`validate_transactions`, `validation/mod.rs:809-864`). A miner with 1% of the pool's shares
-could add about 5.6 million leaves over the window, *est.* (`0.01 x 119,953 x 4,700`). Depth
-barely moves (about 22 mean, under the 39 cap), but the update for one such block is about
-100,000 hashes, about 10 s of wasm Poseidon, *est.*, which is a full core for a watcher.
+Consensus bounds the set through the share-block limits (99 non-coinbase transactions and
+200 KiB per block, `validation/mod.rs:169-171`) and the expiry window, and sets no minimum
+output value (`validate_transactions`, `validation/mod.rs:809-864`). The accumulator therefore
+takes its own floor, `min_units`: outputs below it stay out of the tree and cannot be sold
+through clearing, which keeps the watchers' update cost bounded whatever the share
+transactions look like.
 
-`min_units` bounds it. Transactions never create value (inputs are at least outputs,
+Transactions never create value (inputs are at least outputs,
 `validation/mod.rs:769`), so the live units are at most 100,000,000 times the coinbase outputs in
 the window, and the leaves at most that divided by `min_units`:
 
@@ -478,9 +477,9 @@ In order of preference. None is built here.
    (taproot, claimable by the batch's buyer with a secret that the Bitcoin payout reveals, and
    refundable to the seller after a timeout, as `docs/atomic-swap/htlc_scripts.md` lays out).
    The statement then proves the *lock* outpoint is in the set at an anchor at least `k` blocks
-   after the lock confirmed, with the lock key as `sellerId`. The seller cannot spend a locked
-   output except by the refund path after the timeout, so non-spend after the anchor becomes a
-   property of the lock script, not of the root. It costs one sharechain transaction per sale. A
+   after the lock confirmed, with the lock key as `sellerId`. Non-spend after the anchor then
+   rests on the lock script and on sharechain validation enforcing its refund timeout, not on
+   the root; the design depends on that enforcement. It costs one sharechain transaction per sale. A
    share block carries up to 99 non-coinbase transactions (`TXS_COUNT_LIMIT` = 100,
    `validation/mod.rs:171`), about 855,000 a day at the 10 s target, against the 10,000 offers of
    the M7 workload.
