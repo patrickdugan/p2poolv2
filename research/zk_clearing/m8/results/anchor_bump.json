@@ -1,0 +1,36 @@
+{
+  "node": "/Satoshi:31.1.0/",
+  "parent": {
+    "version": 3,
+    "vsize": 124,
+    "outputs": 2,
+    "fee_sats": 0
+  },
+  "parent_alone": {
+    "txid": "2894fc9d04df8c1739a00690ed778cb38a361d9f64263afea198c01ec9492337",
+    "wtxid": "822d35fd8c3fcc87497a966632c919ba39d62faac3e6dbd8661edd976a92a53f",
+    "allowed": false,
+    "reject-reason": "min relay fee not met",
+    "reject-details": "min relay fee not met, 0 < 13"
+  },
+  "package": {
+    "message": "success",
+    "child_vsize": 153,
+    "child_fee_sats": 1000
+  },
+  "in_mempool_after_package": {
+    "parent": true,
+    "child": true
+  },
+  "sibling_replacement": "b6fcb67378f097079f8b74258d280474c9e14b9494c069c8b11bd369215591b3",
+  "in_mempool_after_replacement": {
+    "parent": true,
+    "low_fee_child": false,
+    "high_fee_child": true
+  },
+  "mined": {
+    "parent": true,
+    "high_fee_child": true,
+    "low_fee_child": false
+  }
+}
