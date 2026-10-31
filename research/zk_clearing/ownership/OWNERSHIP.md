@@ -15,7 +15,7 @@ Numbers marked *est.* are arithmetic on measurements, not runs. Everything else 
 ## What this milestone answers
 
 The roadmap asks for a proof that each sold `saleId` is an unspent sharechain output owned by the
-seller's `miner_address`, without changing P2Poolv2 consensus. Three results:
+seller's `miner_address`, without changing P2Poolv2 consensus. Four results:
 
 1. **A membership proof against a published root is cheap to build and exact to check.** The
    tree is a Poseidon sparse Merkle tree whose roots equal circomlibjs's after every operation
@@ -30,6 +30,11 @@ seller's `miner_address`, without changing P2Poolv2 consensus. Three results:
    verification, not a false statement about another chain. A wrong root is caught when watchers
    refuse to presign the batch graph (section 7). The roadmap carries that
    as a trust assumption.
+4. **The tree builds from a real node store.** Run against the stores of a 5-node P2Poolv2 sim
+   swarm on regtest:
+   - two nodes' stores give the same root at every anchor compared;
+   - a real share output proves membership, and an immature, an expired and a misattributed
+     output are rejected (section 3.5).
 
 ## 1. The sharechain UTXO set, from the code
 
@@ -155,6 +160,7 @@ The files:
 | `smt.py` | Poseidon, the sparse Merkle tree, membership and exclusion proofs, the identities, and a share-address encoder. `test_smt.py` replays circomlibjs's own operation sequence and compares every root and proof |
 | `circuits/owned_sale.circom` | The ownership circuit (section 4) |
 | `bench_smt.py`, `gen_inputs.py`, `run.sh` | The measurements, the circuit inputs, and the end-to-end circuit run |
+| `dump_store.sh`, `real_store.py` | The tree from a real node store (section 3.5): dump the confirmed chain with `p2poolv2_cli`, replay it through `SharechainUtxo`, take the tip's set. `test_real_store.py` checks the window, the refusals, the fixtures and the two-node comparison |
 
 **Reading a node's store.** Everything the accumulator needs is inside the retention window
 `PRUNE_DEPTH`. An in-window output has `root_height >= h + 1 - PAYOUT_DEPTH` and was created at
@@ -162,7 +168,8 @@ or after its root, so it sits in a block less than `PAYOUT_DEPTH` below the tip.
 `Outputs` (`StoredTxOut` carries the value, script, `is_coinbase` and root height), the confirmed
 `BlockHeight` entries, `BlockTxids`, and the transactions' inputs for spends at an earlier
 anchor. `SpendsIndex` alone answers only "spent at the tip", because it stores no spending
-height. `utxo_set.py` replays blocks, which is the same data.
+height. `utxo_set.py` replays blocks, which is the same data. Section 3.5 builds the tree from a
+real node's store through `p2poolv2_cli`.
 
 ## 2. The tree, and how it matches circomlib
 
@@ -300,6 +307,58 @@ the window, and the leaves at most that divided by `min_units`:
 
 `test_utxo_set.py` covers the floor. The value is a watcher policy, and a sale of a smaller
 output is out of the batch path.
+
+### 3.5 A real node store
+
+The workload above is synthetic. This run builds the tree from what P2Poolv2 nodes actually
+stored. The raw output is `results/real-store/run.txt` and `results/real-store/tree.json`.
+
+**The chain.**
+
+- **Swarm:** P2Poolv2 `c0c70cdb` (upstream `main`, newer than this branch's base), its
+  `load-tests/sim` swarm of 5 nodes, and a Bitcoin Core 31.1 regtest node.
+- **Settings:** a 1 s share target and zipf hashrates.
+- **Duration:** about 11 minutes, ending at confirmed height 539.
+- **Validation:** the sim nodes run real stores, validation and chain organisation. Only
+  proof of work is simulated.
+- **Depths:** the sim feature scales them down (`pplns_window.rs`): coinbase maturity 20,
+  `PAYOUT_DEPTH` 100, `PRUNE_DEPTH` 200. `real_store.py --params sim` uses the same values, with
+  an expiry margin of 4 (production's 1/6 of maturity, rounded up).
+
+**What the store held.**
+
+- After the nodes stopped, `p2poolv2_cli` read the confirmed chain from each store.
+- Both stores had all 540 headers. The node had pruned the bodies of heights 1 to 318, so 319
+  to 539 remained.
+- That is the claim of section 1.4 measured: the bodies a node keeps (`PRUNE_DEPTH`, here 200,
+  plus up to one prune interval) cover the accumulator's window (`PAYOUT_DEPTH`, here 100).
+- The tip's window starts at 444, inside the kept run, so the set is exact.
+- `real_store.py` refuses a dump whose kept run does not reach back to the window.
+
+**The tree at anchor 539** (window 444 to 520):
+
+| | |
+|---|---|
+| Leaves | 77: one mature, unexpired coinbase output per share, all P2TR |
+| Owners | 5, with 34, 16, 11, 9 and 7 leaves (the zipf hashrates) |
+| Depth | mean 7.56, max 17; proofs 241.9 bytes on average |
+| Second watcher | node 1's store gives the same root at all 126 anchors from 414 to 539 |
+| Replay | 13.4 s for both dumps and the 126 comparison roots, 21,820 KiB max RSS |
+
+**The proof.** `owned_sale_n1` was used unchanged, with the insecure setup of section 4.
+
+- **Valid:** the deepest real leaf (a coinbase output at height 460) proves in 0.81 s, and the
+  proof verifies against the root above.
+- **Rejected witnesses:** the tip share's own coinbase output (immature), the newest output
+  below the window (height 443, expired), and the valid leaf claimed by another owner.
+
+What this run does not show:
+
+- **Transfers.** The node builds no share transactions besides the coinbase yet (1.1), so there
+  were none to replay. `real_store.py` refuses a body with more than one transaction rather
+  than guess its outputs.
+- **Production depths.** At production depths a full window needs 127,008 shares of history,
+  about 15 days at the 10 s target.
 
 ## 4. The ownership circuit
 
@@ -581,6 +640,18 @@ python3 research/zk_clearing/ownership/bench_smt.py conflicts
 
 # circuits: compile 1 and 16 slots, valid and invalid witnesses, prove and verify one slot
 bash research/zk_clearing/ownership/run.sh /tmp/zkc-ownership
+
+# a real node store (section 3.5), from a P2Poolv2 checkout with load-tests/sim: start the
+# regtest bitcoind its runbook describes, run the swarm for about ten minutes, stop it, then
+cargo build --release -p p2poolv2_node --bin p2poolv2_cli
+for i in 0 1; do
+  bash research/zk_clearing/ownership/dump_store.sh target/release/p2poolv2_cli \
+    /tmp/p2pool-sim/node-$i.toml /tmp/p2pool-sim/store-$i.db /tmp/zkc-real/dump$i
+done
+python3 research/zk_clearing/ownership/real_store.py --params sim \
+  --compare /tmp/zkc-real/dump1 /tmp/zkc-real/dump0 /tmp/zkc-real/tree
+# then compile owned_sale_n1 and run its witness, setup, prove and verify on
+# /tmp/zkc-real/tree/n1 as run.sh does for its own inputs
 
 # regenerate the circomlibjs fixtures (needs the pinned npm packages)
 node research/zk_clearing/ownership/gen_vectors.js <node_modules> research/zk_clearing/ownership/circomlibjs_vectors.json

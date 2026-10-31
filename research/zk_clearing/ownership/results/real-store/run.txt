@@ -1,0 +1,28 @@
+Real node store run, 2026-11-01 (section 3.5 of OWNERSHIP.md)
+
+P2Poolv2 c0c70cdb (upstream main), p2poolv2_sim built with --features sim (release, 454 s)
+Bitcoin Core v31.1.0 regtest, 101 blocks before the swarm, 104 after it
+load-tests/sim/run-swarm.sh 5, IDEAL_BLOCK_TIME=1, SHARES_PER_BLOCK=500, default zipf hashrates
+  node 0..4 share addresses rp2pool1pmfr3p9..., rp2pool1pet7ep3..., rp2pool1pgxxyvc...,
+  rp2pool1pjvtc2m..., rp2pool1paecnce...; hashrates 2.19, 1.09, 0.73, 0.55, 0.44 TH/s
+Sim depths (node log): coinbase maturity 20 shares, PPLNS window 80 shares, prune depth 200
+  shares, prune interval 20 shares
+swarm ran 23:20:25 to 23:31:45 UTC, then stop-swarm.sh; node 0 logged 12 prune passes and
+  4 chain-context rejections (share timestamp not above median time past)
+
+dump_store.sh, p2poolv2_cli --config node-<i>.toml --db-path store-<i>.db
+  node 0: confirmed tip 539, 540 shares, 318 pruned bodies (heights 1..318)
+  node 1: confirmed tip 539, 540 shares, 318 pruned bodies (heights 1..318); 22.3 s to dump
+
+real_store.py --params sim --compare <node 1 dump> <node 0 dump>   13.4 s, 21,820 KiB max RSS
+  replayed heights 319..539; anchor 539; window 444..520
+  77 leaves, 5 owners (34, 16, 11, 9, 7 leaves); depth mean 7.56, max 17; proof 241.9 bytes mean
+  root 268850699823971971130322044102739537879447240329018848130201524300732156012
+  node 0 and node 1 roots equal at all 126 anchors 414..539
+
+owned_sale_n1 (11,438 constraints, 4 public inputs), insecure deterministic setup as run.sh
+  valid (deepest leaf, root height 460): witness accepted, prove 0.81 s / 794,344 KiB max RSS, verify OK
+  public signals: utxoRoot as above, activeSale 1, saleId, sellerId
+  invalid/immature (tip share's coinbase, root height 539): witness rejected
+  invalid/expired (root height 443, one below the window): witness rejected
+  invalid/wrong_owner (the valid leaf under another owner): witness rejected
