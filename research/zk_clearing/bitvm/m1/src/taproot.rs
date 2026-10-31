@@ -33,10 +33,12 @@ pub fn leaf_hash(script: &ScriptBuf) -> TapLeafHash {
     TapLeafHash::from_script(script, LeafVersion::TapScript)
 }
 
-/// A script tree with a NUMS internal key: script-path spends only.
+/// A script tree with a NUMS internal key (script-path spends only), or with a real internal
+/// key that can also spend by the key path (`with_internal_key`).
 pub struct ScriptTree {
     pub leaves: Vec<TapLeafHash>,
     levels: Vec<Vec<TapNodeHash>>,
+    pub internal_key: UntweakedPublicKey,
     pub output_key: bitcoin::key::TweakedPublicKey,
     parity: bitcoin::key::Parity,
 }
@@ -44,6 +46,10 @@ pub struct ScriptTree {
 impl ScriptTree {
     /// Leaves are paired left to right; an odd node moves up a level unchanged.
     pub fn new(secp: &Secp256k1<All>, leaves: Vec<TapLeafHash>) -> ScriptTree {
+        ScriptTree::with_internal_key(secp, nums_key(), leaves)
+    }
+
+    pub fn with_internal_key(secp: &Secp256k1<All>, internal_key: UntweakedPublicKey, leaves: Vec<TapLeafHash>) -> ScriptTree {
         assert!(!leaves.is_empty());
         let mut levels = vec![leaves.iter().map(|leaf| TapNodeHash::from(*leaf)).collect::<Vec<_>>()];
         while levels.last().unwrap().len() > 1 {
@@ -55,8 +61,13 @@ impl ScriptTree {
             levels.push(next);
         }
         let root = levels.last().unwrap()[0];
-        let (output_key, parity) = nums_key().tap_tweak(secp, Some(root));
-        ScriptTree { leaves, levels, output_key, parity }
+        let (output_key, parity) = internal_key.tap_tweak(secp, Some(root));
+        ScriptTree { leaves, levels, internal_key, output_key, parity }
+    }
+
+    #[allow(dead_code)] // M2's escrows sign their key path with it
+    pub fn merkle_root(&self) -> TapNodeHash {
+        self.levels.last().unwrap()[0]
     }
 
     pub fn script_pubkey(&self) -> ScriptBuf {
@@ -80,7 +91,7 @@ impl ScriptTree {
         ControlBlock {
             leaf_version: LeafVersion::TapScript,
             output_key_parity: self.parity,
-            internal_key: nums_key(),
+            internal_key: self.internal_key,
             merkle_branch: TaprootMerkleBranch::try_from(path).expect("depth <= 128"),
         }
     }

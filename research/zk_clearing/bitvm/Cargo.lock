@@ -1644,3 +1644,21 @@ dependencies = [
  "sha2",
  "zkc-convert",
 ]
+
+[[package]]
+name = "zkc-m2"
+version = "0.1.0"
+dependencies = [
+ "ark-bn254",
+ "ark-ff",
+ "ark-groth16",
+ "bitcoin",
+ "bitcoin-script",
+ "bitvm",
+ "hex",
+ "minreq",
+ "num-bigint",
+ "serde_json",
+ "sha2",
+ "zkc-convert",
+]
