@@ -1,0 +1,57 @@
+{
+  "m1": {
+    "source": "bitvm/M1.md (branch zk-clearing-bitvm-m1, 6a67f021), regtest, Bitcoin Core 31.1",
+    "payout_vbytes": 711,
+    "payout_shape": "4 inputs (A + 3 escrows) -> 8 outputs",
+    "assert_chain_vbytes": 422650,
+    "disprove_final_leaf_vbytes": 238931,
+    "refund_vbytes": 138,
+    "t_challenge_blocks": 6,
+    "t_refund_blocks": 30,
+    "bond_sats": 10000000
+  },
+  "m2": {
+    "source": "bitvm/M2.md (branch zk-clearing-bitvm-m2, 55b89b2b), regtest, Bitcoin Core 31.1",
+    "honest_unchallenged_vbytes": 897,
+    "kickoff_vbytes": 197,
+    "payout_vbytes": 700,
+    "honest_fixed_vbytes": 423,
+    "honest_per_escrow_vbytes": 57.5,
+    "honest_per_payee_output_vbytes": 43,
+    "honest_formula": "423 + 57.5 per escrow + 43 per template output (sellers, refunds, fee); 897 for E=3, P=7, as measured",
+    "honest_challenged_vbytes": 423708,
+    "tampered_challenged_vbytes": 662428,
+    "silent_operator_vbytes": 978,
+    "challenged_extra_vbytes": 661531,
+    "challenged_extra_source": "tampered and challenged path (kickoff, challenge, assert chain, disprove through leaf 431, 3 refunds) minus the unchallenged path; an honest operator challenged costs 423,708 - 897",
+    "t_challenge_blocks": 6,
+    "t_assert_blocks": 12,
+    "t_refund_blocks": 30,
+    "bond_sats": 10000000,
+    "burn_sats": 5000000,
+    "challenge_cost_sats": 848424
+  },
+  "m4": {
+    "source": "signed/SIGNED.md (branch zk-clearing-m4, c51f5004), snarkjs 0.7.5",
+    "constraints": 108784,
+    "prove_seconds": 10.15,
+    "prove_max_rss_kib": 2323772,
+    "signatures": 20,
+    "constraints_per_signature": 4989
+  },
+  "m6": {
+    "source": "scaling/SCALING.md (branch zk-clearing-m6), snarkjs 0.7.5",
+    "16": {
+      "constraints": 11995
+    },
+    "64": {
+      "constraints": 46655
+    },
+    "256": {
+      "constraints": 179519
+    },
+    "1024": {
+      "constraints": 710975
+    }
+  }
+}
