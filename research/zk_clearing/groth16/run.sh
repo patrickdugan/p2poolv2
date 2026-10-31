@@ -138,6 +138,23 @@ if grep -q "main.saleCommitment" "$BUILD/$CIRCUIT.sym"; then
     echo "re-split proof: saleCommitment differs, so a verifier holding the honest sale list rejects it" | tee -a "$RESULTS"
   fi
 fi
+if grep -q "main.statementHash" "$BUILD/$CIRCUIT.sym"; then
+  "$NODE" "$HERE/statement.js" "$BUILD/deps/node_modules" "$BUILD/inputs/valid.json" > "$BUILD/statement.json"
+  expected="$("$NODE" -p "require('$BUILD/statement.json').statementHash")"
+  proved="$("$NODE" -p "require('$BUILD/public.json')[0]")"
+  resplit="$("$NODE" -p "require('$BUILD/resplit-public.json')[0]")"
+  echo "statementHash (circomlibjs, honest statement): $expected" >> "$RESULTS"
+  if [ "$proved" = "$expected" ]; then
+    echo "valid proof: statementHash matches circomlibjs" | tee -a "$RESULTS"
+  else
+    echo "valid proof: statementHash $proved != circomlibjs $expected (bad)" | tee -a "$RESULTS"; invalid_status=1
+  fi
+  if [ "$resplit" = "$expected" ]; then
+    echo "re-split proof: statementHash equals the honest one (bad)" | tee -a "$RESULTS"; invalid_status=1
+  else
+    echo "re-split proof: statementHash differs, so a verifier holding the honest statement rejects it" | tee -a "$RESULTS"
+  fi
+fi
 
 echo "== tampered public signal (must not verify)"
 "$NODE" -e "

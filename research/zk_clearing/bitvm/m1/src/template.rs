@@ -1,6 +1,10 @@
 //! The payout template: transaction outputs as a deterministic function of the 18 public
 //! signals of accounting16x4_committed and the opened sale list.
 //!
+//! M3 (accounting16x4_hashed) proves the same 18 values as a private statement whose
+//! Poseidon hash is the only public signal; `build_hashed` checks that preimage and then
+//! builds exactly the M1 template.
+//!
 //! Public signal layout (snarkjs order: outputs, then public inputs in declaration order):
 //!   0 saleCommitment | 1..=4 funding[b] | 5..=8 feeBudget[b] | 9..=12 refund[b]
 //!   13 totalPayout | 14..=17 buyerId[b]
@@ -10,6 +14,9 @@
 //! the escrowed value, and no dust output. The per-buyer equation
 //! funding[b] = cost[b] + feeBudget[b] + refund[b] is the proof's job, not the template's.
 
+use ark_bn254::Fr;
+use ark_ff::PrimeField;
+use light_poseidon::{Poseidon, PoseidonHasher};
 use num_bigint::BigUint;
 use serde_json::Value;
 
@@ -19,6 +26,8 @@ pub const NUM_SIGNALS: usize = 18;
 pub const MAX_SATS: u64 = 21_000_000 * 100_000_000;
 /// Bitcoin Core's dust threshold for a P2TR output at the default dust relay fee.
 pub const P2TR_DUST: u64 = 330;
+/// accounting16x4_hashed hashes the statement as two Poseidon sponges of this many values.
+pub const STATEMENT_SPLIT: usize = 9;
 
 pub const SALE_COMMITMENT: usize = 0;
 pub const fn funding(b: usize) -> usize { 1 + b }
@@ -160,6 +169,48 @@ pub fn build(signals: &[BigUint], input: &Value, opening: &Value, opening_commit
     Ok(Template { escrows, outputs })
 }
 
+fn poseidon(inputs: &[Fr]) -> Result<Fr, String> {
+    Poseidon::<Fr>::new_circom(inputs.len())
+        .and_then(|mut h| h.hash(inputs))
+        .map_err(|e| format!("poseidon: {e}"))
+}
+
+/// statementHash = Poseidon2(Poseidon9(statement[0..9]), Poseidon9(statement[9..18])) with
+/// circomlib's parameters, as accounting16x4_hashed.circom and groth16/statement.js compute
+/// it. Values >= r are refused, so x + r cannot stand in for x in the preimage.
+pub fn statement_hash(statement: &[BigUint]) -> Result<BigUint, String> {
+    if statement.len() != NUM_SIGNALS {
+        return Err(format!("statement has {} values, expected {NUM_SIGNALS}", statement.len()));
+    }
+    let r = zkc_convert::fr_modulus();
+    if let Some(i) = statement.iter().position(|v| v >= &r) {
+        return Err(format!("{} is not below r", signal_name(i)));
+    }
+    let fr: Vec<Fr> = statement.iter().map(|v| Fr::from(v.clone())).collect();
+    let low = poseidon(&fr[..STATEMENT_SPLIT])?;
+    let high = poseidon(&fr[STATEMENT_SPLIT..])?;
+    Ok(poseidon(&[low, high])?.into_bigint().into())
+}
+
+/// The M3 template. `statement_hash` is the proof's single public signal and `statement` the
+/// 18 values the operator publishes with the sale list: they must hash to it, and the outputs
+/// are then `build(statement, ...)`.
+pub fn build_hashed(
+    statement_hash: &BigUint,
+    statement: &[BigUint],
+    input: &Value,
+    opening: &Value,
+    opening_commitment: &BigUint,
+) -> Result<Template, String> {
+    if statement_hash >= &zkc_convert::fr_modulus() {
+        return Err("statementHash is not below r".into());
+    }
+    if &self::statement_hash(statement)? != statement_hash {
+        return Err("the statement does not hash to statementHash".into());
+    }
+    build(statement, input, opening, opening_commitment)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -221,6 +272,51 @@ mod tests {
         assert_ne!(honest, other);
         assert_eq!(other.outputs[3].amount, 380_000);
         assert_eq!(other.outputs[4].amount, 32_000);
+    }
+
+    fn hashed_vectors() -> (BigUint, Vec<BigUint>) {
+        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../vectors/");
+        let read = |name: &str| -> Value { serde_json::from_str(&std::fs::read_to_string(format!("{dir}{name}")).unwrap()).unwrap() };
+        let hash = zkc_convert::public_integers(&read("hashed-batch-public.json")).unwrap().remove(0);
+        let statement = zkc_convert::public_integers(&read("hashed-batch-statement.json")["statement"]).unwrap();
+        (hash, statement)
+    }
+
+    #[test]
+    fn statement_hash_matches_the_circuit() {
+        // light-poseidon with circomlib parameters reproduces the hashed proof's public signal.
+        let (hash, statement) = hashed_vectors();
+        assert_eq!(statement_hash(&statement).unwrap(), hash);
+        let (signals, ..) = vectors();
+        assert_eq!(statement, signals);
+    }
+
+    #[test]
+    fn hashed_template_checks_the_preimage() {
+        let (signals, input, opening, commitment) = vectors();
+        let (hash, statement) = hashed_vectors();
+        let m1 = build(&signals, &input, &opening, &commitment).unwrap();
+        assert_eq!(build_hashed(&hash, &statement, &input, &opening, &commitment).unwrap(), m1);
+
+        // A different statement does not open the honest hash, and builds a different template
+        // under its own hash.
+        let mut moved = statement.clone();
+        moved[refund(0)] += 50_000u64;
+        moved[refund(1)] -= 50_000u64;
+        let err = build_hashed(&hash, &moved, &input, &opening, &commitment).unwrap_err();
+        assert!(err.contains("does not hash"), "{err}");
+        let other_hash = statement_hash(&moved).unwrap();
+        assert_ne!(other_hash, hash);
+        assert_ne!(build_hashed(&other_hash, &moved, &input, &opening, &commitment).unwrap(), m1);
+
+        // Non-canonical encodings: the hash itself, and any statement value, written as x + r.
+        let r = zkc_convert::fr_modulus();
+        assert!(build_hashed(&(&hash + &r), &statement, &input, &opening, &commitment).unwrap_err().contains("not below r"));
+        for i in 0..NUM_SIGNALS {
+            let mut plus_r = statement.clone();
+            plus_r[i] += &r;
+            assert!(build_hashed(&hash, &plus_r, &input, &opening, &commitment).unwrap_err().contains("not below r"));
+        }
     }
 
     #[test]

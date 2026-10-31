@@ -1,5 +1,5 @@
-//! Glue to BitVM's chunked Groth16 verifier (patched to 18 public inputs) and the Winternitz
-//! scripts around it: commit leaves for the assert transactions, binding leaves that tie the
+//! Glue to BitVM's chunked Groth16 verifier (patched to 18 public inputs for M1, or 1 for M3)
+//! and the Winternitz scripts around it: commit leaves for the assert transactions, binding leaves that tie the
 //! asserted public signals to the payout template, and witness helpers.
 
 use ark_bn254::{Bn254, Fr};
@@ -19,8 +19,9 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::path::Path;
 
-/// Values the operator commits with Winternitz signatures: 18 public signals and 14 proof
-/// field elements (Wots32 each), then 431 intermediate hashes (Wots16 each).
+/// Values the operator commits with Winternitz signatures: NUM_PUBS public signals (18 in M1,
+/// 1 in M3) and 14 proof field elements (Wots32 each), then NUM_HASH intermediate hashes
+/// (Wots16 each; 431 in M1, 363 in M3).
 pub const NUM_VALUES: usize = NUM_PUBS + NUM_U256 + NUM_HASH;
 
 /// The operator's one-time Winternitz secrets for one graph. Derived from a public seed: the

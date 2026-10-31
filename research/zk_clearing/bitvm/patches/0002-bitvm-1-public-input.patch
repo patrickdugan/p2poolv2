@@ -1,0 +1,20 @@
+diff --git a/bitvm/src/chunk/api.rs b/bitvm/src/chunk/api.rs
+index a49171d..de1f859 100644
+--- a/bitvm/src/chunk/api.rs
++++ b/bitvm/src/chunk/api.rs
+@@ -18,11 +18,11 @@ use super::api_runtime_utils::{
+ };
+ use super::wrap_hasher::BLAKE3_HASH_LENGTH;
+ 
+-// zk_clearing M1: accounting16x4_committed has 18 public signals. Each extra scalar adds
+-// 4 MSM chunks (254 bits / 64 bits per chunk), so NUM_HASH grows by 17 * 4 = 68.
+-pub const NUM_PUBS: usize = 18;
++// zk_clearing M3: accounting16x4_hashed has one public signal, statementHash, so NUM_PUBS and
++// NUM_HASH return to upstream's values (M1's 18 inputs need NUM_HASH 431).
++pub const NUM_PUBS: usize = 1;
+ pub const NUM_U256: usize = 14;
+-pub const NUM_HASH: usize = 431;
++pub const NUM_HASH: usize = 363;
+ pub const VALIDATING_TAPS: usize = 1;
+ pub const HASHING_TAPS: usize = NUM_HASH;
+ pub const NUM_TAPS: usize = HASHING_TAPS + VALIDATING_TAPS;
