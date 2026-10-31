@@ -1,0 +1,36 @@
+{
+  "params": "sim",
+  "confirmed_tip": 539,
+  "shares": 540,
+  "replayed_heights": [
+    319,
+    539
+  ],
+  "bodies_missing": 318,
+  "anchor": 539,
+  "window": [
+    444,
+    520
+  ],
+  "leaves": 77,
+  "root": "268850699823971971130322044102739537879447240329018848130201524300732156012",
+  "owners": 5,
+  "leaves_per_owner": [
+    34,
+    16,
+    11,
+    9,
+    7
+  ],
+  "depth_mean": 7.56,
+  "depth_max": 17,
+  "proof_bytes_mean": 241.9,
+  "compare": {
+    "anchors": [
+      414,
+      539
+    ],
+    "count": 126,
+    "differing": []
+  }
+}
