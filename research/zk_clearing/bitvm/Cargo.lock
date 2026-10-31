@@ -1689,6 +1689,7 @@ dependencies = [
  "bitcoin-script",
  "bitvm",
  "hex",
+ "light-poseidon",
  "minreq",
  "num-bigint",
  "serde_json",
