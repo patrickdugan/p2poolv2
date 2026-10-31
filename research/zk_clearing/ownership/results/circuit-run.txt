@@ -1,0 +1,62 @@
+circuit: owned_sale (OwnedSales, SMTVerifier inclusion, Poseidon leaf value)
+circom: circom compiler 2.2.2
+node: v22.12.0  snarkjs: 0.7.5
+setup: INSECURE deterministic beacon, power 14, beacon 5ea82d8c6d749f711f35507f7adb4b2a94fafc771a9cd425d47bb193b2cf6466
+
+compile owned_sale_n1                  7.67 s     309840 KiB max RSS
+owned_sale_n1: 11438 constraints
+   # of Wires: 11473
+   # of Private Inputs: 42
+   # of Public Inputs: 4
+   # of Outputs: 0
+compile owned_sale_n16                37.05 s    1004708 KiB max RSS
+owned_sale_n16: 183008 constraints
+   # of Wires: 183538
+   # of Private Inputs: 672
+   # of Public Inputs: 49
+   # of Outputs: 0
+levels 8: # of Constraints: 3534 (one sale slot)
+levels 16: # of Constraints: 5510 (one sale slot)
+levels 24: # of Constraints: 7486 (one sale slot)
+levels 32: # of Constraints: 9462 (one sale slot)
+levels 40: # of Constraints: 11438 (one sale slot)
+levels 48: # of Constraints: 13414 (one sale slot)
+wrote inputs for a 2002-leaf tree, root 1526186376974820686356041463134739977268751756388776846902229773117850322591
+  accepted owned_sale_n1/valid
+  accepted owned_sale_n1/valid_deepest
+  accepted owned_sale_n1/valid_padding
+
+owned_sale_n1 invalid inputs (witness calculator must reject):
+  rejected active_flag_not_boolean: Error in template OwnedSale_158 line: 39
+  rejected leaf_deeper_than_circuit: Error in template SMTLevIns_77 line: 93
+  rejected non_member_with_borrowed_path: Error in template ForceEqualIfEnabled_156 line: 56
+  rejected non_member_with_exclusion_path: Error in template ForceEqualIfEnabled_156 line: 56
+  rejected padding_slot_names_an_output: Error in template OwnedSale_158 line: 41
+  rejected spent_output_against_new_root: Error in template ForceEqualIfEnabled_156 line: 56
+  rejected tampered_sibling: Error in template ForceEqualIfEnabled_156 line: 56
+  rejected wrong_owner: Error in template ForceEqualIfEnabled_156 line: 56
+  rejected wrong_root: Error in template ForceEqualIfEnabled_156 line: 56
+  rejected wrong_root_height: Error in template ForceEqualIfEnabled_156 line: 56
+  rejected wrong_sale_id: Error in template ForceEqualIfEnabled_156 line: 56
+  rejected wrong_units: Error in template ForceEqualIfEnabled_156 line: 56
+  accepted owned_sale_n16/valid
+
+owned_sale_n16 invalid inputs (witness calculator must reject):
+  rejected non_member_in_slot_3: Error in template ForceEqualIfEnabled_156 line: 56
+  rejected padding_slot_15_names_an_output: Error in template OwnedSale_158 line: 41
+  rejected wrong_owner_in_slot_9: Error in template ForceEqualIfEnabled_156 line: 56
+ptau new + beacon + prepare          137.61 s     489896 KiB max RSS
+groth16 setup + beacon                43.03 s     509204 KiB max RSS
+
+proving key: 6827214 bytes
+verifying key: 3477 bytes JSON, sha256 01b27a5b65fecdd484df229f4bafb9138332dcc31d167a36a3c2d74dbfecb97b
+groth16 prove                          2.16 s     772440 KiB max RSS
+groth16 verify (CLI)                   1.26 s     307204 KiB max RSS
+proof: 2 G1 + 1 G2 = 256 bytes uncompressed; public signals: 4
+valid proof: verified
+deepest leaf (depth 39) proof: verified
+tampered utxoRoot: rejected
+tampered sellerId: rejected
+public signal + r: rejected by snarkjs
+forged witness: R1CS check rejects it (aborting checking process at constraint 270)
+forged witness proof: produced, rejected by the verifier

@@ -1,0 +1,130 @@
+{
+ "params": {
+  "coinbase_maturity": 6048,
+  "payout_depth": 127008,
+  "expiry_margin": 1008,
+  "max_depth": 39
+ },
+ "window_root_heights": 119953,
+ "poseidon": {
+  "python": "3.12.10",
+  "poseidon2_us": 431.6,
+  "poseidon3_us": 602.1
+ },
+ "scenarios": [
+  {
+   "scenario": "today: coinbase outputs only",
+   "transfers_per_share": 0.0,
+   "fan_out": 1,
+   "blocks_measured": 600,
+   "history_blocks": 135057,
+   "live_leaves_at_start": 119953,
+   "live_leaves_at_end": 119953,
+   "history_replay_seconds": 85.9,
+   "initial_build": {
+    "seconds": 141.6,
+    "poseidon2": 172962,
+    "poseidon3": 119953,
+    "hashes_per_leaf": 2.44
+   },
+   "per_share_update": {
+    "tree_ops_per_share": 2.0,
+    "poseidon2_mean": 32.9,
+    "poseidon3_mean": 2,
+    "hashes_mean": 34.9,
+    "hashes_max": 47,
+    "ms_mean": 15.0,
+    "ms_p99": 24.06
+   },
+   "tree": {
+    "mean_leaf_depth": 18.2,
+    "max_leaf_depth": 34
+   },
+   "membership_proof": {
+    "sampled": 2000,
+    "siblings_mean": 18.25,
+    "siblings_p99": 24,
+    "siblings_max": 29,
+    "bytes_full_mean": 584,
+    "bytes_compressed_mean": 555,
+    "bytes_fixed_for_circuit": 1280
+   }
+  },
+  {
+   "scenario": "1 whole-share transfer per share",
+   "transfers_per_share": 1.0,
+   "fan_out": 1,
+   "blocks_measured": 600,
+   "history_blocks": 135057,
+   "live_leaves_at_start": 119953,
+   "live_leaves_at_end": 119953,
+   "history_replay_seconds": 87.3,
+   "initial_build": {
+    "seconds": 141.3,
+    "poseidon2": 172962,
+    "poseidon3": 119953,
+    "hashes_per_leaf": 2.44
+   },
+   "per_share_update": {
+    "tree_ops_per_share": 4.0,
+    "poseidon2_mean": 61.8,
+    "poseidon3_mean": 4,
+    "hashes_mean": 65.8,
+    "hashes_max": 81,
+    "ms_mean": 26.19,
+    "ms_p99": 33.5
+   },
+   "tree": {
+    "mean_leaf_depth": 18.2,
+    "max_leaf_depth": 34
+   },
+   "membership_proof": {
+    "sampled": 2000,
+    "siblings_mean": 18.19,
+    "siblings_p99": 24,
+    "siblings_max": 30,
+    "bytes_full_mean": 582,
+    "bytes_compressed_mean": 553,
+    "bytes_fixed_for_circuit": 1280
+   }
+  },
+  {
+   "scenario": "4 transfers per share, each split in 2",
+   "transfers_per_share": 4.0,
+   "fan_out": 2,
+   "blocks_measured": 600,
+   "history_blocks": 135057,
+   "live_leaves_at_start": 119953,
+   "live_leaves_at_end": 122347,
+   "history_replay_seconds": 86.5,
+   "initial_build": {
+    "seconds": 146.0,
+    "poseidon2": 172962,
+    "poseidon3": 119953,
+    "hashes_per_leaf": 2.44
+   },
+   "per_share_update": {
+    "tree_ops_per_share": 14.01,
+    "poseidon2_mean": 195.7,
+    "poseidon3_mean": 18,
+    "hashes_mean": 213.7,
+    "hashes_max": 242,
+    "ms_mean": 96.81,
+    "ms_p99": 122.9
+   },
+   "tree": {
+    "mean_leaf_depth": 18.23,
+    "max_leaf_depth": 34
+   },
+   "membership_proof": {
+    "sampled": 2000,
+    "siblings_mean": 18.28,
+    "siblings_p99": 24,
+    "siblings_max": 31,
+    "bytes_full_mean": 585,
+    "bytes_compressed_mean": 556,
+    "bytes_fixed_for_circuit": 1280
+   }
+  }
+ ]
+}

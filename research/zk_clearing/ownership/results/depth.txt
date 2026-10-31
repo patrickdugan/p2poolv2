@@ -1,0 +1,48 @@
+window of root heights = 119953; trials per size = 60
+[
+ {
+  "leaves": 16384,
+  "log2": 14.0,
+  "mean_leaf_depth": 15.33,
+  "max_depth_min": 25,
+  "max_depth_median": 28,
+  "max_depth_max": 40,
+  "trials": 60
+ },
+ {
+  "leaves": 119953,
+  "log2": 16.87,
+  "mean_leaf_depth": 18.2,
+  "max_depth_min": 31,
+  "max_depth_median": 34,
+  "max_depth_max": 38,
+  "trials": 60
+ },
+ {
+  "leaves": 179929,
+  "log2": 17.46,
+  "mean_leaf_depth": 18.79,
+  "max_depth_min": 32,
+  "max_depth_median": 35,
+  "max_depth_max": 43,
+  "trials": 60
+ },
+ {
+  "leaves": 359859,
+  "log2": 18.46,
+  "mean_leaf_depth": 19.79,
+  "max_depth_min": 34,
+  "max_depth_median": 37,
+  "max_depth_max": 42,
+  "trials": 60
+ },
+ {
+  "leaves": 1048576,
+  "log2": 20.0,
+  "mean_leaf_depth": 21.33,
+  "max_depth_min": 38,
+  "max_depth_median": 40,
+  "max_depth_max": 45,
+  "trials": 60
+ }
+]

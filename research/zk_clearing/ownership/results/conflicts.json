@@ -1,0 +1,56 @@
+[
+ {
+  "n_levels": 28,
+  "max_depth": 27,
+  "grind_sha256_evaluations": "2^27",
+  "conflicts_per_year_rho1": 2818.4338,
+  "untracked_fraction_rho1": 0.000447,
+  "conflicts_per_year_rho3": 25365.9042,
+  "untracked_fraction_rho3": 0.00134
+ },
+ {
+  "n_levels": 32,
+  "max_depth": 31,
+  "grind_sha256_evaluations": "2^31",
+  "conflicts_per_year_rho1": 176.1521,
+  "untracked_fraction_rho1": 2.79e-05,
+  "conflicts_per_year_rho3": 1585.369,
+  "untracked_fraction_rho3": 8.38e-05
+ },
+ {
+  "n_levels": 36,
+  "max_depth": 35,
+  "grind_sha256_evaluations": "2^35",
+  "conflicts_per_year_rho1": 11.0095,
+  "untracked_fraction_rho1": 1.75e-06,
+  "conflicts_per_year_rho3": 99.0856,
+  "untracked_fraction_rho3": 5.24e-06
+ },
+ {
+  "n_levels": 40,
+  "max_depth": 39,
+  "grind_sha256_evaluations": "2^39",
+  "conflicts_per_year_rho1": 0.6881,
+  "untracked_fraction_rho1": 1.09e-07,
+  "conflicts_per_year_rho3": 6.1928,
+  "untracked_fraction_rho3": 3.27e-07
+ },
+ {
+  "n_levels": 44,
+  "max_depth": 43,
+  "grind_sha256_evaluations": "2^43",
+  "conflicts_per_year_rho1": 0.043,
+  "untracked_fraction_rho1": 6.82e-09,
+  "conflicts_per_year_rho3": 0.3871,
+  "untracked_fraction_rho3": 2.05e-08
+ },
+ {
+  "n_levels": 48,
+  "max_depth": 47,
+  "grind_sha256_evaluations": "2^47",
+  "conflicts_per_year_rho1": 0.0027,
+  "untracked_fraction_rho1": 4.26e-10,
+  "conflicts_per_year_rho3": 0.0242,
+  "untracked_fraction_rho3": 1.28e-09
+ }
+]
