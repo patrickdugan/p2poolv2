@@ -1,0 +1,32 @@
+# Run b, 2026-11-01: challenged and tampered. Another job held most of the host's RAM, so validation ran 2-4x slower than in M1.
+== scenario challenged
+[time] partial disprove scripts: 11.6 s
+[time] full tapscripts: 6.3 s
+[time] hash disprove leaves: 0.8 s
+[time] challenger validates: 691.9 s
+scenario challenged: 1331.87 s, 13047364 KiB max RSS
+== scenario tampered
+[time] partial disprove scripts: 32.5 s
+[time] full tapscripts: 40.8 s
+[time] hash disprove leaves: 1.5 s
+[time] challenger validates: 515.2 s
+scenario tampered: 603.87 s, 12997496 KiB max RSS
+
+# Run c, 2026-11-01: unchallenged, silent, incomplete, stall, after sendrawtransaction gained maxburnamount.
+== scenario unchallenged
+[time] partial disprove scripts: 10.6 s
+[time] full tapscripts: 12.4 s
+[time] hash disprove leaves: 1.5 s
+scenario unchallenged: 28.71 s, 3447884 KiB max RSS
+== scenario silent
+[time] partial disprove scripts: 10.8 s
+[time] full tapscripts: 10.0 s
+[time] hash disprove leaves: 1.1 s
+scenario silent: 28.33 s, 3447792 KiB max RSS
+== scenario incomplete
+[time] partial disprove scripts: 6.9 s
+[time] full tapscripts: 8.3 s
+[time] hash disprove leaves: 1.5 s
+scenario incomplete: 24.17 s, 3447840 KiB max RSS
+== scenario stall
+scenario stall: 5.48 s, 11600 KiB max RSS
