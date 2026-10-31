@@ -1,0 +1,24 @@
+[package]
+name = "zkc-m1"
+version = "0.1.0"
+edition = "2021"
+description = "BitVM M1 for zk_clearing: assert, disprove and timeout graph on Bitcoin regtest"
+license = "MIT"
+
+[[bin]]
+name = "zkc-m1"
+path = "src/main.rs"
+
+[dependencies]
+zkc-convert = { path = "../convert" }
+bitvm = { path = "../vendor/BitVM/bitvm" }
+bitcoin = { version = "0.32.5", features = ["rand-std"] }
+bitcoin-script = { git = "https://github.com/BitVM/rust-bitcoin-script" }
+ark-bn254 = { workspace = true }
+ark-ff = { workspace = true }
+ark-groth16 = { workspace = true }
+num-bigint = { workspace = true }
+serde_json = { workspace = true }
+hex = { workspace = true }
+sha2 = "0.10.8"
+minreq = "2.14.1"

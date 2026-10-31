@@ -1,0 +1,135 @@
+diff --git a/bitvm/src/bn254/g1.rs b/bitvm/src/bn254/g1.rs
+index 4c51780..3b1593f 100644
+--- a/bitvm/src/bn254/g1.rs
++++ b/bitvm/src/bn254/g1.rs
+@@ -174,8 +174,14 @@ impl G1Affine {
+         q: ark_bn254::G1Affine,
+     ) -> (Script, Vec<Hint>) {
+         let mut hints = vec![];
+-        assert_ne!(t, q);
+-        assert_ne!(t, -q);
++        // zk_clearing M1: only a sum of two non-identity points can be degenerate. With an
++        // identity operand the script below takes an is_zero branch and consumes no hints;
++        // the unguarded assertions panicked when both were the identity, which any zero
++        // public input (an MSM accumulator at the identity plus a zero table row) triggers.
++        if !t.is_zero() && !q.is_zero() {
++            assert_ne!(t, q);
++            assert_ne!(t, -q);
++        }
+ 
+         let (alpha, bias) = if !t.is_zero() && !q.is_zero() {
+             let alpha = (t.y - q.y) / (t.x - q.x);
+diff --git a/bitvm/src/chunk/api.rs b/bitvm/src/chunk/api.rs
+index 03efbfe..a49171d 100644
+--- a/bitvm/src/chunk/api.rs
++++ b/bitvm/src/chunk/api.rs
+@@ -18,9 +18,11 @@ use super::api_runtime_utils::{
+ };
+ use super::wrap_hasher::BLAKE3_HASH_LENGTH;
+ 
+-pub const NUM_PUBS: usize = 1;
++// zk_clearing M1: accounting16x4_committed has 18 public signals. Each extra scalar adds
++// 4 MSM chunks (254 bits / 64 bits per chunk), so NUM_HASH grows by 17 * 4 = 68.
++pub const NUM_PUBS: usize = 18;
+ pub const NUM_U256: usize = 14;
+-pub const NUM_HASH: usize = 363;
++pub const NUM_HASH: usize = 431;
+ pub const VALIDATING_TAPS: usize = 1;
+ pub const HASHING_TAPS: usize = NUM_HASH;
+ pub const NUM_TAPS: usize = HASHING_TAPS + VALIDATING_TAPS;
+@@ -53,6 +55,33 @@ pub fn api_get_assertions_from_signature(signed_asserts: Signatures) -> Assertio
+     get_assertions_from_signature(signed_asserts)
+ }
+ 
++// zk_clearing M1: additive public wrappers, no behaviour change.
++pub fn api_get_pubkeys(secrets: Vec<String>) -> PublicKeys {
++    get_pubkeys(secrets)
++}
++
++/// The 32-byte assertion encoding of any 256-bit value `n`, including n >= r, exactly as
++/// `get_assertion_from_segments` encodes a public input.
++pub fn api_u256_assertion_bytes(n: ark_ff::BigInt<4>) -> [u8; 32] {
++    crate::chunk::elements::CompressedStateObject::U256(n)
++        .serialize_to_byte_array()
++        .try_into()
++        .unwrap()
++}
++
++/// Witness (hint script) for disprove leaf `leaf_index`, built from `signed_asserts` whether or
++/// not that leaf succeeds. None when the leaf's segment lies after the first faulty segment and
++/// so cannot be derived.
++pub fn api_disprove_witness_for_leaf(
++    vk: &ark_groth16::VerifyingKey<Bn254>,
++    signed_asserts: Signatures,
++    leaf_index: usize,
++) -> Option<Script> {
++    let asserts = get_assertions_from_signature(signed_asserts.clone());
++    let (_success, segments) = get_segments_from_assertion(asserts, vk.clone());
++    crate::chunk::api_runtime_utils::disprove_witness_for_leaf(&segments, signed_asserts, leaf_index)
++}
++
+ pub mod type_conversion_utils {
+     use super::*;
+     use crate::chunk::api::Signatures;
+diff --git a/bitvm/src/chunk/api_runtime_utils.rs b/bitvm/src/chunk/api_runtime_utils.rs
+index f1d5088..a5e5d82 100644
+--- a/bitvm/src/chunk/api_runtime_utils.rs
++++ b/bitvm/src/chunk/api_runtime_utils.rs
+@@ -631,6 +631,57 @@ pub(crate) fn execute_script_from_signature(
+     utils_execute_chunked_g16(mul_hints, bc_hints, segments, disprove_scripts)
+ }
+ 
++/// zk_clearing M1: the hint script for one disprove leaf, built the same way as the per-segment
++/// witness in `execute_script_from_signature` and `utils_execute_chunked_g16`.
++pub(crate) fn disprove_witness_for_leaf(
++    segments: &[Segment],
++    signed_assts: Signatures,
++    leaf_index: usize,
++) -> Option<Script> {
++    let mut sigs: Vec<SigData> = vec![];
++    sigs.extend(signed_assts.0.iter().map(|f| SigData::Wots32(*f)));
++    sigs.extend(signed_assts.1.iter().map(|f| SigData::Wots32(*f)));
++    sigs.extend(signed_assts.2.iter().map(|f| SigData::Wots16(*f)));
++    let mul_hints = utils_collect_mul_hints_per_segment(segments);
++
++    let mut tap_script_index = 0;
++    for (i, seg) in segments.iter().enumerate() {
++        if seg.scr_type == ScriptType::NonDeterministic {
++            continue;
++        }
++        if tap_script_index == leaf_index {
++            let mut index_of_bitcommitted_msg: Vec<u32> =
++                seg.parameter_ids.iter().rev().map(|(k, _)| *k).collect();
++            if !seg.scr_type.is_final_script() {
++                index_of_bitcommitted_msg.push(seg.id);
++            }
++            let mut sig_preimages = script! {};
++            for index in index_of_bitcommitted_msg {
++                let sig_preimage = match &sigs[index as usize] {
++                    SigData::Wots16(signature) => Wots16::compact_signature_to_raw_witness(
++                        &Wots16::signature_to_compact_signature(signature),
++                    ),
++                    SigData::Wots32(signature) => Wots32::compact_signature_to_raw_witness(
++                        &Wots32::signature_to_compact_signature(signature),
++                    ),
++                };
++                sig_preimages = script! {
++                    {sig_preimages}
++                    {sig_preimage}
++                };
++            }
++            return Some(script! {
++                for h in &mul_hints[i] {
++                    {h.push()}
++                }
++                {sig_preimages}
++            });
++        }
++        tap_script_index += 1;
++    }
++    None
++}
++
+ /// This is a duplicate of [`execute_script_from_signature`], just to analyze worst case scenarios
+ pub fn analyze_largest_segments_from_signatures(
+     segments: &[Segment],

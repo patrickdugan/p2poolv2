@@ -1,0 +1,89 @@
+{
+ "buyer_slots": [
+  {
+   "buyer": "buyer1",
+   "refund_payee": "refund-buyer1"
+  },
+  {
+   "buyer": "buyer2",
+   "refund_payee": "refund-buyer2"
+  },
+  {
+   "buyer": "buyer3",
+   "refund_payee": "refund-buyer3"
+  },
+  {
+   "buyer": null,
+   "refund_payee": null
+  }
+ ],
+ "domain": "p2poolv2/proposed-share-clearing/v0",
+ "fee_payee": "operator-fee",
+ "plan_commitment": "71126f1c81100217b1b93c5f90396f4c7f2cd4e755a86ecad2c05ac3d22772c8",
+ "sale_slots": [
+  {
+   "seller_payee": "seller-alice",
+   "share_outpoint": "m1-share:0"
+  },
+  {
+   "seller_payee": "seller-bob",
+   "share_outpoint": "m1-share:1"
+  },
+  {
+   "seller_payee": "seller-alice",
+   "share_outpoint": "m1-share:2"
+  },
+  {
+   "seller_payee": "seller-carol",
+   "share_outpoint": "m1-share:3"
+  },
+  {
+   "seller_payee": null,
+   "share_outpoint": null
+  },
+  {
+   "seller_payee": null,
+   "share_outpoint": null
+  },
+  {
+   "seller_payee": null,
+   "share_outpoint": null
+  },
+  {
+   "seller_payee": null,
+   "share_outpoint": null
+  },
+  {
+   "seller_payee": null,
+   "share_outpoint": null
+  },
+  {
+   "seller_payee": null,
+   "share_outpoint": null
+  },
+  {
+   "seller_payee": null,
+   "share_outpoint": null
+  },
+  {
+   "seller_payee": null,
+   "share_outpoint": null
+  },
+  {
+   "seller_payee": null,
+   "share_outpoint": null
+  },
+  {
+   "seller_payee": null,
+   "share_outpoint": null
+  },
+  {
+   "seller_payee": null,
+   "share_outpoint": null
+  },
+  {
+   "seller_payee": null,
+   "share_outpoint": null
+  }
+ ]
+}

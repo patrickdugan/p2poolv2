@@ -1,0 +1,26 @@
+# BitVM M1 for the zk_clearing circuit. Build with scripts/build.sh, which puts a patched
+# BitVM c620dbf checkout at vendor/BitVM (patches/0001-bitvm-18-public-inputs.patch).
+[workspace]
+resolver = "2"
+members = ["convert", "m1"]
+# BitVM keeps its own workspace (its crates inherit dependencies from it).
+exclude = ["vendor"]
+
+[workspace.dependencies]
+ark-bn254 = { version = "0.5.0", features = ["curve", "scalar_field"], default-features = false }
+ark-ff = "0.5.0"
+ark-ec = "0.5.0"
+ark-groth16 = "0.5.0"
+ark-serialize = "0.5.0"
+num-bigint = "0.4"
+serde_json = "1"
+hex = "0.4"
+
+[profile.release]
+opt-level = 3
+lto = false
+codegen-units = 16
+
+# BitVM's script generation is unusably slow without optimisation, tests included.
+[profile.test]
+opt-level = 3
