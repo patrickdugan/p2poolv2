@@ -61,7 +61,12 @@ grep -E "# of (Constraints|Wires|Private Inputs|Public Inputs|Outputs)" "$BUILD/
   | sed 's/.*\] //' >> "$RESULTS"
 
 echo "== fixtures"
-python3 "$ZK/fixtures.py" "$BUILD/inputs" "$CIRCUIT"
+# FIXTURES=<script> overrides the generator; it gets <out dir> <node_modules dir>.
+if [ -n "${FIXTURES:-}" ]; then
+  bash "$FIXTURES" "$BUILD/inputs" "$BUILD/deps/node_modules"
+else
+  python3 "$ZK/fixtures.py" "$BUILD/inputs" "$CIRCUIT"
+fi
 WITNESS_JS=("$NODE" "$BUILD/${CIRCUIT}_js/generate_witness.js" "$BUILD/${CIRCUIT}_js/$CIRCUIT.wasm")
 
 echo "== valid witness"
@@ -122,8 +127,10 @@ if cmp -s <("$NODE" -p "JSON.stringify(require('$BUILD/public.json'))") \
 else
   echo "re-split sale list: proves different public signals" | tee -a "$RESULTS"
 fi
-if grep -q "main.saleCommitment" "$BUILD/$CIRCUIT.sym"; then
-  expected="$("$NODE" "$HERE/commit.js" "$BUILD/deps/node_modules" "$BUILD/inputs/valid.json")"
+# COMMIT_JS=<script> recomputes public signal 0 (saleCommitment) from valid.json.
+if [ -z "${COMMIT_JS:-}" ] && [ "$CIRCUIT" = accounting16x4_committed ]; then COMMIT_JS="$HERE/commit.js"; fi
+if [ -n "${COMMIT_JS:-}" ]; then
+  expected="$("$NODE" "$COMMIT_JS" "$BUILD/deps/node_modules" "$BUILD/inputs/valid.json")"
   proved="$("$NODE" -p "require('$BUILD/public.json')[0]")"
   resplit="$("$NODE" -p "require('$BUILD/resplit-public.json')[0]")"
   echo "saleCommitment (circomlibjs, honest sale list): $expected" >> "$RESULTS"
