@@ -1,63 +1,90 @@
-# Research: bounded Groth16-compatible share-clearing arithmetic
+# Research: bounded Groth16 share-clearing arithmetic
 
-Status: **uncompiled research circuit**. This is a Circom source, Python witness adapter and equation oracle. It has no generated Groth16 proof, verification key or Bitcoin-enforced escrow.
+Status: **compiled and proven with an insecure single-party setup.** Both circuits below compile
+with circom 2.2.2, produce Groth16 proofs that snarkjs 0.7.5 verifies, and reject every invalid
+fixture. The measurements, audit and remaining limits are in [GROTH16.md](GROTH16.md). There is
+no Bitcoin-enforced escrow.
 
-This is a **stacked follow-up** to `docs/proposals/provable-share-clearing-v0.md`. It does not change P2Poolv2 sharechain consensus, PPLNS payouts, wallet behavior, node deployment, or existing atomic swaps.
+This is a follow-up to `docs/proposals/provable-share-clearing-v0.md`. It does not change
+P2Poolv2 sharechain consensus, PPLNS payouts, wallet behavior, node deployment, or existing
+atomic swaps.
 
-## What the proposed circuit checks
+## Circuits
 
-`circuits/accounting16x4.circom` uses sixteen sale slots and four buyer escrow slots. Every satoshi amount is bounded to 0 through 2,100,000,000,000,000. Active sale prices must be positive. Active sales select exactly one buyer, and unused sale or buyer slots contain zero amounts.
+| File | Statement | Constraints |
+|---|---|---|
+| `circuits/clearing.circom` | Shared templates: `Bits51`, `SatoshiAmount`, `ClearingAmounts` | — |
+| `circuits/accounting16x4.circom` | v0: arithmetic only | 3,159 |
+| `circuits/accounting16x4_committed.circom` | v1: v0 plus a public Poseidon commitment to the sale list | 9,004 |
 
-The public inputs are `funding[4]`, `feeBudget[4]`, `refund[4]` and `totalPayout`. Private inputs include sale prices, active-slot flags, the buyer assignment matrix and modular inverses to enforce nonzero active values.
+Both use sixteen sale slots and four buyer escrow slots.
 
-For each buyer, the arithmetic relation is:
+- **Amounts.** Every satoshi amount is bounded to 0 through 2,100,000,000,000,000. Active sale
+  prices must be positive.
+- **Slots.** Each active sale selects exactly one buyer, and unused sale or buyer slots contain
+  zero amounts.
+- **Per buyer:**
 
 ```text
 funding[buyer] = feeBudget[buyer] + refund[buyer]
                + sum(price[sale] * selector[sale][buyer])
 ```
 
-The circuit also requires `totalPayout = sum(price)`. The range constraints rule out negative amounts and field-wraparound for this bounded number of sales.
+- **Total:** `totalPayout = sum(price)`. Every sum is far below the field prime, so the field
+  equations are the integer equations.
 
-`witness.py` derives the inputs from an already successful `model.plan_batch` and uses the BN254 scalar field for inverses. `encode_snarkjs_input` serializes all field elements as decimal strings to avoid JavaScript number precision loss. `example_inputs.py` emits deterministic JSON with placeholder identities.
+**v0 binds nothing private.** Its public inputs (`funding[4]`, `feeBudget[4]`, `refund[4]`,
+`totalPayout`) already determine each buyer's total cost. Any other sale list with the same
+totals proves the identical statement; the pipeline demonstrates this with `resplit.json`.
 
-## Crucial trust boundary
+**v1 adds a commitment.**
 
-Even if compiled and proven, this circuit would certify **only arithmetic consistency of caller-supplied figures**. It cannot authenticate Bitcoin funding outpoints, signed sale orders, sharechain UTXO membership, owner identity, replay history, chain tips, payout addresses or refund destinations.
+- **New inputs:** public `buyerId[4]`, and private `saleId[16]` (share outpoint) and
+  `sellerId[16]` (the seller's sharechain `miner_address`, which owns the share output).
+- **New output:** public `saleCommitment = Poseidon16(leaf[0..15])`, where each leaf is
+  `Poseidon5(activeSale, saleId, sellerId, price, selected buyerId)`.
+- **Padding:** padding slots must carry zero identities.
+- **Checking a proof:** a verifier holding the sale list recomputes the commitment
+  (`groth16/commit.js`, using circomlibjs) and compares it with the proof's public output.
 
-The SHA-256 `BatchPlan.commitment` from the reference model is **not bound into this circuit**. A valid proof could be paired with an unrelated Bitcoin transaction. The circuit says nothing about a market maker's solvency, Bitcoin finality, or the enforceability of a BitVM challenge. The PPLNS maturity, uncle weighting, paying-block anchor and Bitcoin ancestry rules are also outside this circuit.
+## Python side
 
-This is a candidate arithmetic subcircuit for a larger, authenticated settlement statement.
+- **`witness.py`:** builds circuit inputs from an already successful `model.plan_batch` and
+  computes the field inverses in the BN254 scalar field. `field_id` maps identity strings to
+  field elements.
+- **`fixtures.py`:** writes `valid.json`, `resplit.json` and one invalid fixture per rule. The
+  invalid fixtures bypass the Python oracle.
+- **`wtns.py`:** reads and writes `.wtns` files, so `run.sh` can forge a witness that skips the
+  witness calculator.
+
+## Trust boundary
+
+Even with v1, a proof certifies the arithmetic and binds a specific sale list. It does not
+authenticate any of the following:
+
+- that the sale IDs are spendable sharechain outputs;
+- that the sellers own or signed for them;
+- the seller's Bitcoin payout destination;
+- the buyers' escrow outpoints or funding amounts;
+- replay history, chain tips or Bitcoin ancestry.
+
+PPLNS maturity, uncle weighting, the paying-block anchor and Bitcoin ancestry rules are outside
+the circuit. [GROTH16.md](GROTH16.md) lists each missing predicate and how it would be bound.
 
 ## Validation
 
-From repository root, with Python 3:
+Python, from the repository root (stdlib only):
 
 ```sh
 python3 -m unittest discover -s research/zk_clearing -p 'test_*.py' -v
-python3 -m py_compile research/zk_clearing/model.py research/zk_clearing/witness.py research/zk_clearing/example_inputs.py
-python3 research/zk_clearing/example_inputs.py > /tmp/p2pool-clearing-example-inputs.json
 ```
 
-The local semantic equation tests passed (36 Python tests across the original model and this extension). They are **not** a Circom compiler, R1CS witness checker or Groth16 proof verification.
-
-With a separately installed and reviewed Circom compiler 2.1.8+ and `snarkjs`, the next gate is:
+Groth16 end to end. This needs circom 2.2.2, Node with npm, python3 and GNU time. npm packages
+come from the committed lockfile:
 
 ```sh
-mkdir -p /tmp/p2pool-clearing-circuit
-circom research/zk_clearing/circuits/accounting16x4.circom --r1cs --wasm --sym -o /tmp/p2pool-clearing-circuit
-snarkjs r1cs info /tmp/p2pool-clearing-circuit/accounting16x4.r1cs
-python3 research/zk_clearing/example_inputs.py > /tmp/p2pool-clearing-circuit/example-inputs.json
-node /tmp/p2pool-clearing-circuit/accounting16x4_js/generate_witness.js /tmp/p2pool-clearing-circuit/accounting16x4_js/accounting16x4.wasm /tmp/p2pool-clearing-circuit/example-inputs.json /tmp/p2pool-clearing-circuit/example.wtns
+bash research/zk_clearing/groth16/run.sh accounting16x4 /tmp/zkc-v0
+bash research/zk_clearing/groth16/run.sh accounting16x4_committed /tmp/zkc-v1
 ```
-
-A complete Groth16 check requires a securely generated setup, pinned verifying key, valid proof verification and adversarial witness tests. Do not use a toy or single-operator setup to imply production-ready trust assumptions.
-
-## Acceptance gates before real settlement
-
-1. Compile the circuit; measure its R1CS constraints and proving costs; verify an actual proof and failed forged witnesses with a pinned toolchain.
-2. Add cryptographic authorization and sharechain-membership predicates bound to an authenticated chain state, plus externally enforced nullifier/replay rules and reorganization policy.
-3. Bind the proved statement to actual escrow UTXOs, payout addresses, amounts, refund paths, transaction graph and challenge data using a specified BitVM implementation.
-4. Compare full collateral-hours, Bitcoin vbytes, latency, liveness and failure rates against bilateral HTLC/Lightning or Ark swaps using identical trades and a declared workload.
 
 No resources from the separate private security-fixes repository are used here.
