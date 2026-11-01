@@ -33,6 +33,7 @@ import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Mapping
 
 _HERE = Path(__file__).resolve().parent
 _ZK = _HERE.parent
@@ -189,6 +190,20 @@ def owner_id(share_address: str) -> int:
     return field_id("seller_share_address", share_address)
 
 
+def owner_field(share_address: str, registry: Mapping[str, int] | None = None) -> int:
+    """The owner stored in a leaf: the registered order key hash of the address, else `owner_id`.
+
+    `registry` maps a share address to `Poseidon(Ax, Ay)` of the BabyJubjub order key its
+    controlling key registered (`register.py`). An address without an entry keeps the address
+    id, which no order key hashes to, so its outputs cannot be sold through the signed circuit.
+    """
+    if registry is not None:
+        key_hash = registry.get(share_address)
+        if key_hash is not None:
+            return key_hash
+    return owner_id(share_address)
+
+
 def leaf_value(owner: int, units: int, root_height: int) -> int:
     """Poseidon(owner id, units, root height): the value stored under an outpoint's key.
 
@@ -236,6 +251,44 @@ def share_address(output_key: bytes, network: str = "mainnet") -> str:
     polymod = _bech32_polymod(hrp_expanded + data + [0] * 6) ^ _BECH32M_CONST
     checksum = [(polymod >> 5 * (5 - i)) & 31 for i in range(6)]
     return hrp + "1" + "".join(_BECH32_CHARSET[d] for d in data + checksum)
+
+
+def decode_share_address(address: str) -> tuple[str, bytes]:
+    """Parse a share address into (network, 32-byte taproot output key), refusing anything else.
+
+    The rules of docs/architecture/address-format.md: a P2Poolv2 HRP, a valid bech32m checksum,
+    witness version 1 and a 32-byte program with canonical padding. Only the lowercase spelling
+    is accepted, so one address has one string.
+    """
+    if address != address.lower():
+        raise ValueError("share addresses are lowercase")
+    separator = address.rfind("1")
+    hrp, payload = address[:separator], address[separator + 1:]
+    network = next((name for name, prefix in SHARE_HRP.items() if prefix == hrp), None)
+    if separator < 1 or network is None:
+        raise ValueError("not a share address: unknown human readable part")
+    if len(payload) < 7 or any(c not in _BECH32_CHARSET for c in payload):
+        raise ValueError("invalid bech32 data part")
+    data = [_BECH32_CHARSET.index(c) for c in payload]
+    hrp_expanded = [ord(c) >> 5 for c in hrp] + [0] + [ord(c) & 31 for c in hrp]
+    if _bech32_polymod(hrp_expanded + data) != _BECH32M_CONST:
+        raise ValueError("bad bech32m checksum")
+    witness_version, groups = data[0], data[1:-6]
+    if witness_version != 1:
+        raise ValueError("share addresses are witness version 1 only")
+    acc, bits, program = 0, 0, bytearray()
+    for group in groups:
+        acc = (acc << 5) | group
+        bits += 5
+        if bits >= 8:
+            bits -= 8
+            program.append((acc >> bits) & 0xFF)
+        acc &= (1 << bits) - 1
+    if bits >= 5 or acc:
+        raise ValueError("non-canonical padding")
+    if len(program) != 32:
+        raise ValueError("share addresses carry a 32-byte output key")
+    return network, bytes(program)
 
 
 # ---------------------------------------------------------------------------

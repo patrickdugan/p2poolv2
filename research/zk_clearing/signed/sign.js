@@ -15,8 +15,9 @@ const crypto = require("crypto");
 const ORDER_TAG = 1n;
 const ESCROW_TAG = 2n;
 
-async function main() {
-  const [modules, validSpecPath, resplitSpecPath, outDir] = process.argv.slice(2);
+// The signing kit: demo keys, EdDSA-Poseidon signatures, Poseidon over BN254 and the builder that
+// turns a spec into signed inputs. main() below uses it, and so does joined/sign_joined.js.
+async function createSigner(modules) {
   const { buildEddsa, buildPoseidon } = require(path.join(modules, "circomlibjs"));
   const eddsa = await buildEddsa();
   const poseidonHash = await buildPoseidon();
@@ -63,6 +64,9 @@ async function main() {
     i.escrowR8x[b] = signature.R8x; i.escrowR8y[b] = signature.R8y; i.escrowS[b] = signature.S;
   }
 
+  const sellerKey = (label, slot) => key(label === null ? "padding-seller-" + slot : "seller/" + label);
+  const buyerKey = (label, slot) => key(label === null ? "padding-buyer-" + slot : "buyer/" + label);
+
   function build(spec) {
     const i = JSON.parse(JSON.stringify(spec.inputs));
     const sales = i.price.length, buyers = i.funding.length;
@@ -71,12 +75,12 @@ async function main() {
     const sellerKeys = [], buyerKeys = [];
     for (let b = 0; b < buyers; b++) {
       const label = spec.buyerKeyLabels[b];
-      buyerKeys[b] = key(label === null ? "padding-buyer-" + b : "buyer/" + label);
+      buyerKeys[b] = buyerKey(label, b);
       i.buyerId[b] = label === null ? "0" : H([buyerKeys[b].Ax, buyerKeys[b].Ay]);
     }
     for (let s = 0; s < sales; s++) {
       const label = spec.sellerKeyLabels[s];
-      sellerKeys[s] = key(label === null ? "padding-seller-" + s : "seller/" + label);
+      sellerKeys[s] = sellerKey(label, s);
       i.sellerId[s] = label === null ? "0" : H([sellerKeys[s].Ax, sellerKeys[s].Ay]);
     }
     for (let b = 0; b < buyers; b++) signEscrow(i, b, buyerKeys[b]);
@@ -93,6 +97,13 @@ async function main() {
   const write = (file, i) => fs.writeFileSync(file, JSON.stringify(i, (_, v) => (typeof v === "bigint" ? v.toString() : v)));
   const clone = (i) => JSON.parse(JSON.stringify(i, (_, v) => (typeof v === "bigint" ? v.toString() : v)));
   const buyerOf = (i, s) => i.selector[s].findIndex((bit) => String(bit) === "1");
+
+  return { H, sellerKey, build, signOrder, signEscrow, inverse, write, clone, buyerOf };
+}
+
+async function main() {
+  const [modules, validSpecPath, resplitSpecPath, outDir] = process.argv.slice(2);
+  const { build, signOrder, inverse, write, clone, buyerOf } = await createSigner(modules);
 
   fs.mkdirSync(path.join(outDir, "invalid"), { recursive: true });
   const valid = build(JSON.parse(fs.readFileSync(validSpecPath, "utf8")));
@@ -134,4 +145,8 @@ async function main() {
   process.exit(0);
 }
 
-main().catch((error) => { console.error(error); process.exit(1); });
+module.exports = { createSigner };
+
+if (require.main === module) {
+  main().catch((error) => { console.error(error); process.exit(1); });
+}

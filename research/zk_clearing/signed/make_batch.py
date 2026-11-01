@@ -24,8 +24,11 @@ FEE_CAP_MARGIN = 50
 BATCH_HEIGHT = 499
 
 
-def batch_spec(resplit: bool = False) -> dict:
-    sales, escrows, state, context = example_batch(resplit_sales() if resplit else None)
+def batch_spec(resplit: bool = False, sales=None) -> dict:
+    """The spec of the example batch, of the re-split one, or of the `sales` given (model.Sale tuple)."""
+    if sales is None and resplit:
+        sales = resplit_sales()
+    sales, escrows, state, context = example_batch(sales)
     inputs, _ = build_committed_inputs(sales, escrows, state, context, BATCH_HEIGHT)
     ordered_sales = sorted(sales, key=lambda sale: sale.share_outpoint)
     ordered_escrows = sorted(escrows, key=lambda escrow: escrow.buyer_id)

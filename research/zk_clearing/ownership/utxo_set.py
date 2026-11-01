@@ -19,13 +19,19 @@ The rules mirror the Rust code (see OWNERSHIP.md for file and line references):
 The accumulator then commits to the outputs that are spendable at the next
 block with at least `expiry_margin` blocks of life left, that are worth at least
 `min_units`, and that fit the tree.
+
+Owners. By default a leaf's owner is the address id of the output's share address
+(`smt.owner_id`). Given a `registry`, a mapping from share address to a registered order
+key hash (`register.Registry.owners()`), an output whose address is registered has that
+hash as its owner instead, and any other output keeps the address id. Which outputs are in
+the tree does not depend on the registry; only the leaf values do.
 """
 
 from __future__ import annotations
 
 import bisect
 from dataclasses import dataclass, field
-from typing import Iterable, Sequence
+from typing import Iterable, Mapping, Sequence
 
 import smt
 
@@ -97,6 +103,12 @@ class Output:
         if self._value is None:
             self._value = smt.leaf_value(smt.owner_id(self.owner), self.units, self.root_height)
         return self._value
+
+    def value_for(self, registry: Mapping[str, int] | None = None) -> int:
+        """The leaf value with the owner the registry gives this output's address."""
+        if registry and self.owner in registry:
+            return smt.leaf_value(registry[self.owner], self.units, self.root_height)
+        return self.value
 
 
 class SharechainUtxo:
@@ -190,9 +202,10 @@ class SharechainUtxo:
                 winners[slot] = output
         return sorted(winners.values(), key=lambda output: output.key)
 
-    def build_tree(self, anchor: int) -> smt.SparseMerkleTree:
+    def build_tree(self, anchor: int, registry: Mapping[str, int] | None = None) -> smt.SparseMerkleTree:
+        """The anchor's tree. `registry` maps share addresses to registered order key hashes."""
         tree = smt.SparseMerkleTree.from_items(
-            ((output.key, output.value) for output in self.snapshot(anchor)),
+            ((output.key, output.value_for(registry)) for output in self.snapshot(anchor)),
             max_depth=self.params.max_depth,
         )
         return tree
@@ -201,15 +214,17 @@ class SharechainUtxo:
 class Accumulator:
     """The same tree, kept up to date block by block."""
 
-    def __init__(self, params: ChainParams):
+    def __init__(self, params: ChainParams, registry: Mapping[str, int] | None = None):
         self.params = params
         self.model = SharechainUtxo(params)
         self.tree = smt.SparseMerkleTree(max_depth=params.max_depth)
+        self.registry: dict[str, int] = dict(registry or {})
         self._mask = (1 << params.max_depth) - 1
         self._candidates: dict[int, list[Output]] = {}  # slot -> eligible outputs, oldest first
         self._tracked: dict[int, Output] = {}  # slot -> the output in the tree
         self.inserts = 0
         self.deletes = 0
+        self.updates = 0
 
     @property
     def anchor(self) -> int:
@@ -277,9 +292,28 @@ class Accumulator:
             self.tree.delete(held.key)
             self.deletes += 1
         if output is not None:
-            self.tree.insert(output.key, output.value)
+            self.tree.insert(output.key, output.value_for(self.registry))
             self._tracked[slot] = output
             self.inserts += 1
+
+    def set_owner_key(self, address: str, key_hash: int | None) -> int:
+        """Register (or with None, unregister) an order key hash for a share address.
+
+        Every output of the address that is in the tree gets its leaf rewritten, so a rotation
+        costs one tree update per tracked output of the address. Returns the number rewritten.
+        Outputs that enter the tree later pick up the new owner on insertion.
+        """
+        if key_hash is None:
+            self.registry.pop(address, None)
+        else:
+            self.registry[address] = key_hash
+        rewritten = 0
+        for output in self._tracked.values():
+            if output.owner == address:
+                self.tree.update(output.key, output.value_for(self.registry))
+                rewritten += 1
+        self.updates += rewritten
+        return rewritten
 
     def tracked_outputs(self) -> list[Output]:
         return list(self._tracked.values())

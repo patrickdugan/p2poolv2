@@ -1,0 +1,54 @@
+circuit: clearing16x4_owned
+git: zk-clearing-integration 9fc8dc96 plus the uncommitted M10 changes
+circom: circom compiler 2.2.2
+node: v22.12.0  snarkjs: 0.7.5
+setup: INSECURE deterministic beacon, power 20, beacon 5ea82d8c6d749f711f35507f7adb4b2a94fafc771a9cd425d47bb193b2cf6466
+
+compile                         35.48 s   1959472 KiB max RSS
+ snarkJS: # of Wires: 292060
+ snarkJS: # of Constraints: 291792
+ snarkJS: # of Private Inputs: 973
+ snarkJS: # of Public Inputs: 19
+ snarkJS: # of Outputs: 2
+field check: witness.BN254_FR matches the circuit prime
+
+invalid fixtures (witness calculator must reject):
+  rejected bad_order_signature: Error in template ForceEqualIfEnabled_321 line: 56
+  rejected order_key_not_registered_owner: Error in template ForceEqualIfEnabled_321 line: 56
+  rejected output_of_another_registered_seller: Error in template ForceEqualIfEnabled_321 line: 56
+  rejected output_spent_before_anchor: Error in template ForceEqualIfEnabled_321 line: 56
+  rejected rotated_key_sells_with_old_key: Error in template ForceEqualIfEnabled_321 line: 56
+  rejected unregistered_owner_output: Error in template ForceEqualIfEnabled_321 line: 56
+  rejected wrong_utxo_root: Error in template ForceEqualIfEnabled_321 line: 56
+phase 1: reused /root/zkc-m6/pot20_final.ptau
+groth16 setup + beacon         143.99 s   3058212 KiB max RSS
+
+proving key: 195816462 bytes
+verifying key: 6592 bytes JSON, sha256 837f9d10f80249b553d1361aa5fc6e25f739b5aa0ef78c4473a23c7382529ced
+groth16 prove                   11.79 s   4286632 KiB max RSS
+groth16 verify (CLI)             0.41 s    303556 KiB max RSS
+proof: 2 G1 + 1 G2 = 256 bytes uncompressed; public signals: 21
+valid proof: verified
+re-split sale list: proves different public signals
+saleCommitment (circomlibjs, honest sale list): 6307547631067351669539909156736013469708861331715731760237154754781629888972
+valid proof: saleCommitment matches circomlibjs
+re-split proof: saleCommitment differs, so a verifier holding the honest sale list rejects it
+tampered public signal: rejected
+public signal + r: rejected by snarkjs
+forged witness: R1CS check rejects it (aborting checking process at constraint 104691)
+forged witness proof: produced, rejected by the verifier
+
+checks specific to the join:
+  accepted valid_rotated (R1CS satisfied)
+  public signal 20 is the root of the tree built from the registry: 9653930120785426183349085250778095429274917165237012183994165460669403200688
+  tampered utxoRoot: rejected
+  rotated batch: proof verifies; public signals that differ from the unrotated batch's: 0,20
+  bad_order_signature: refused in EdDSAPoseidonVerifier (ForceEqualIfEnabled < EdDSAPoseidonVerifier < SignedClearing < OwnedClearing)
+  order_key_not_registered_owner: refused in SMTVerifier (ForceEqualIfEnabled < SMTVerifier < OwnedSale < OwnedSales < OwnedClearing)
+  output_of_another_registered_seller: refused in SMTVerifier (ForceEqualIfEnabled < SMTVerifier < OwnedSale < OwnedSales < OwnedClearing)
+  output_spent_before_anchor: refused in SMTVerifier (ForceEqualIfEnabled < SMTVerifier < OwnedSale < OwnedSales < OwnedClearing)
+  rotated_key_sells_with_old_key: refused in SMTVerifier (ForceEqualIfEnabled < SMTVerifier < OwnedSale < OwnedSales < OwnedClearing)
+  unregistered_owner_output: refused in SMTVerifier (ForceEqualIfEnabled < SMTVerifier < OwnedSale < OwnedSales < OwnedClearing)
+  wrong_utxo_root: refused in SMTVerifier (ForceEqualIfEnabled < SMTVerifier < OwnedSale < OwnedSales < OwnedClearing)
+
+peak total RSS of the run (all processes of the session, sampled every 2 s): 4199116 KiB
