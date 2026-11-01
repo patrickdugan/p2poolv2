@@ -155,8 +155,9 @@ if [ -n "${COMMIT_JS:-}" ]; then
     echo "re-split proof: saleCommitment differs, so a verifier holding the honest sale list rejects it" | tee -a "$RESULTS"
   fi
 fi
+# STATEMENT_JS=<script> recomputes the statement and statementHash of a hashed circuit (default: statement.js).
 if grep -q "main.statementHash" "$BUILD/$CIRCUIT.sym"; then
-  "$NODE" "$HERE/statement.js" "$BUILD/deps/node_modules" "$BUILD/inputs/valid.json" > "$BUILD/statement.json"
+  "$NODE" "${STATEMENT_JS:-$HERE/statement.js}" "$BUILD/deps/node_modules" "$BUILD/inputs/valid.json" > "$BUILD/statement.json"
   expected="$("$NODE" -p "require('$BUILD/statement.json').statementHash")"
   proved="$("$NODE" -p "require('$BUILD/public.json')[0]")"
   resplit="$("$NODE" -p "require('$BUILD/resplit-public.json')[0]")"
