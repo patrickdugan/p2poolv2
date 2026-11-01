@@ -1,0 +1,55 @@
+circuit: owned_tree_smt_16x4
+git: unknown (uncommitted changes)
+circom: circom compiler 2.2.2
+node: v22.12.0  snarkjs: 0.7.5
+setup: INSECURE deterministic beacon, power 20, beacon 5ea82d8c6d749f711f35507f7adb4b2a94fafc771a9cd425d47bb193b2cf6466
+
+compile                         33.15 s   2021492 KiB max RSS
+ snarkJS: # of Wires: 296212
+ snarkJS: # of Constraints: 295944
+ snarkJS: # of Private Inputs: 992
+ snarkJS: # of Public Inputs: 1
+ snarkJS: # of Outputs: 0
+field check: witness.BN254_FR matches the circuit prime
+
+invalid fixtures (witness calculator must reject):
+  rejected bad_order_signature: Error in template ForceEqualIfEnabled_322 line: 56
+  rejected output_expired: Error in template ForceEqualIfEnabled_322 line: 56
+  rejected output_immature: Error in template ForceEqualIfEnabled_322 line: 56
+  rejected output_spent_before_anchor: Error in template ForceEqualIfEnabled_322 line: 56
+  rejected signer_is_another_registered_seller: Error in template ForceEqualIfEnabled_322 line: 56
+  rejected signer_not_registered_owner: Error in template ForceEqualIfEnabled_322 line: 56
+  rejected statement_hash_omits_root: Error in template SignedClearingTree_481 line: 355
+  rejected unregistered_owner_output: Error in template ForceEqualIfEnabled_322 line: 56
+  rejected wrong_utxo_root: Error in template ForceEqualIfEnabled_322 line: 56
+phase 1: reused /root/zkc-m6/pot20_final.ptau
+groth16 setup + beacon         114.46 s   3173016 KiB max RSS
+
+proving key: 198056606 bytes
+verifying key: 2932 bytes JSON, sha256 5c9920f3dccc03a20e00e131dbcfd778cf53cbd2eab96fdd2c5cfc760a024e3b
+groth16 prove                   31.52 s   4368532 KiB max RSS
+groth16 verify (CLI)             1.79 s    304952 KiB max RSS
+proof: 2 G1 + 1 G2 = 256 bytes uncompressed; public signals: 1
+valid proof: verified
+re-split sale list: proves different public signals
+statementHash (circomlibjs, honest statement): 21830614934449592300927552658148592908546175910856176335058507653322333047737
+valid proof: statementHash matches circomlibjs
+re-split proof: statementHash differs, so a verifier holding the honest statement rejects it
+tampered public signal: rejected
+public signal + r: rejected by snarkjs
+forged witness: R1CS check rejects it (aborting checking process at constraint 292172)
+forged witness proof: produced, rejected by the verifier
+
+checks specific to the join:
+  padded batch: witness satisfies the R1CS
+  accepted valid_duplicate_output_two_slots (R1CS satisfied)
+  statement has 21 values and its last is the tree's root: 2863087668158901340294317467764573576331323215908845033570208577623128353867
+  signer_not_registered_owner: refused in SMTVerifier (ForceEqualIfEnabled < SMTVerifier < OwnedSale < OwnedSales < OwnedSignedTreeSmt)
+  signer_is_another_registered_seller: refused in SMTVerifier (ForceEqualIfEnabled < SMTVerifier < OwnedSale < OwnedSales < OwnedSignedTreeSmt)
+  unregistered_owner_output: refused in SMTVerifier (ForceEqualIfEnabled < SMTVerifier < OwnedSale < OwnedSales < OwnedSignedTreeSmt)
+  output_spent_before_anchor: refused in SMTVerifier (ForceEqualIfEnabled < SMTVerifier < OwnedSale < OwnedSales < OwnedSignedTreeSmt)
+  output_expired: refused in SMTVerifier (ForceEqualIfEnabled < SMTVerifier < OwnedSale < OwnedSales < OwnedSignedTreeSmt)
+  output_immature: refused in SMTVerifier (ForceEqualIfEnabled < SMTVerifier < OwnedSale < OwnedSales < OwnedSignedTreeSmt)
+  wrong_utxo_root: refused in SMTVerifier (ForceEqualIfEnabled < SMTVerifier < OwnedSale < OwnedSales < OwnedSignedTreeSmt)
+  bad_order_signature: refused in EdDSAPoseidonVerifier (ForceEqualIfEnabled < EdDSAPoseidonVerifier < SignedOrder < SignedClearingTree < OwnedSignedTreeSmt)
+  statement_hash_omits_root: refused in SignedClearingTree (SignedClearingTree < OwnedSignedTreeSmt)

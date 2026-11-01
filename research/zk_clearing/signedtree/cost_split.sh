@@ -54,7 +54,7 @@ if [ "${SKIP_WHOLE:-0}" = 1 ]; then
   whole=$sum
   whole_label="whole circuit (not compiled; = sum of parts)"
 else
-  whole=$(count whole "SignedClearingTree($SALES, $BUYERS, $DEPTH)" "$TREE_SIGNED")
+  whole=$(count whole "SignedClearingTree($SALES, $BUYERS, $DEPTH, 0)" "$TREE_SIGNED")
   whole_label="whole circuit"
 fi
 sig=$((SALES * order + BUYERS * escrow))

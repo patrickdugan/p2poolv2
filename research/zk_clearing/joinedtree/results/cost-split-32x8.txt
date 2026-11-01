@@ -1,0 +1,22 @@
+joined signed tree 32x8 (depth 5), compile-only parts
+part                                                       constraints
+SignedClearingTree(32, 8, 5, 0): M11's whole circuit           225601
+statement hash over 36 values (M11)                              1773
+statement hash over 37 values (root appended)                    2022
+  the root's cost in the statement hash                           249
+WindowSale, binary, 17 levels (per sale slot)                    4417
+  one WindowLevel(1): Poseidon(2) 240 + 1 select                  241
+  17 digit bits, Num2Bits(17)                                      17
+  leaf Poseidon(4)                                                297
+WindowSale, eight-way, 6 levels (per sale slot)                  2775
+  one WindowLevel(3): Poseidon(8) 402 + 7 selects                 409
+  18 digit bits, Num2Bits(18)                                      18
+OwnedSale(40): M5's SMTVerifier (per sale slot)                 11438
+WindowOrder(17), per neighbouring pair                             19
+WindowOrder(18), per neighbouring pair                             20
+sum, binary window: base + S x sale + (S-1) x order + root     367783
+sum, eight-way window                                          315270
+sum, M5's sparse tree                                          591866
+compiled whole circuit (BIN) minus sum of parts                     0
+compiled whole circuit (R8) minus sum of parts                      0
+compiled whole circuit (SMT) minus sum of parts                     0

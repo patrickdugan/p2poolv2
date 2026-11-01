@@ -24,7 +24,8 @@ Poseidon constants come from `poseidon_bn254.json`, extracted from the pinned
 circomlibjs by `extract_poseidon_constants.js`. `poseidon_reference` follows
 circomlibjs's `poseidon_reference.js`; `poseidon2` and `poseidon3` are unrolled
 for speed and checked against it in `test_smt.py` and against circomlibjs in
-`circomlibjs_vectors.json`.
+`circomlibjs_vectors.json`. `poseidon_n` hashes the other widths the constants file holds
+(4 and 8 inputs, for the dense window tree of `window_tree.py`).
 """
 
 from __future__ import annotations
@@ -65,20 +66,23 @@ def _load_params() -> tuple[int, dict[int, tuple[int, list[int], list[list[int]]
 
 _N_ROUNDS_F, _PARAMS = _load_params()
 
-# Counts of Poseidon evaluations, so callers can report hashes per operation.
+# Counts of Poseidon evaluations, so callers can report hashes per operation. WIDE_HASH_COUNTS
+# counts `poseidon_n` calls by number of inputs (the dense window tree, window_tree.py).
 HASH_COUNTS = {"poseidon2": 0, "poseidon3": 0}
+WIDE_HASH_COUNTS: dict[int, int] = {}
 
 
 def reset_hash_counts() -> None:
     HASH_COUNTS["poseidon2"] = 0
     HASH_COUNTS["poseidon3"] = 0
+    WIDE_HASH_COUNTS.clear()
 
 
 def poseidon_reference(inputs: list[int]) -> int:
-    """Poseidon with 2 or 3 inputs, written as in circomlibjs `poseidon_reference.js`."""
+    """Poseidon with 2, 3, 4 or 8 inputs, written as in circomlibjs `poseidon_reference.js`."""
     t = len(inputs) + 1
     if t not in _PARAMS:
-        raise ValueError("constants are extracted for 2 and 3 inputs only")
+        raise ValueError("no constants extracted for this number of inputs")
     n_partial, round_constants, mds = _PARAMS[t]
     state = [0, *inputs]
     half = _N_ROUNDS_F // 2
@@ -157,6 +161,51 @@ def _build_poseidon3():
 
 poseidon2 = _build_poseidon2()
 poseidon3 = _build_poseidon3()
+
+
+def _build_poseidon_n(n_inputs: int):
+    """Poseidon over `n_inputs` values for any width whose constants `poseidon_bn254.json` holds."""
+    t = n_inputs + 1
+    if t not in _PARAMS:
+        raise ValueError(f"no Poseidon constants for {n_inputs} inputs; extract them with extract_poseidon_constants.js")
+    n_partial, c, m = _PARAMS[t]
+    half = _N_ROUNDS_F // 2
+    total = _N_ROUNDS_F + n_partial
+    p = FIELD
+    rows = [tuple(row) for row in m]
+    lanes = range(1, t)
+
+    def poseidon_n(inputs) -> int:
+        if len(inputs) != n_inputs:
+            raise ValueError(f"this hash takes {n_inputs} inputs, got {len(inputs)}")
+        WIDE_HASH_COUNTS[n_inputs] = WIDE_HASH_COUNTS.get(n_inputs, 0) + 1
+        state = [0, *inputs]
+        for r in range(total):
+            k = r * t
+            if r < half or r >= half + n_partial:
+                state = [pow(state[i] + c[k + i], 5, p) for i in range(t)]
+            else:
+                state = [pow(state[0] + c[k], 5, p)] + [state[i] + c[k + i] for i in lanes]
+            state = [sum(a * b for a, b in zip(row, state)) % p for row in rows]
+        return state[0]
+
+    return poseidon_n
+
+
+_POSEIDON_N: dict[int, object] = {}
+
+
+def poseidon_n(inputs) -> int:
+    """Poseidon of `len(inputs)` values (circomlib's `Poseidon(n)`); 2 and 3 inputs have unrolled fast paths."""
+    inputs = list(inputs)
+    if len(inputs) == 2:
+        return poseidon2(*inputs)
+    if len(inputs) == 3:
+        return poseidon3(*inputs)
+    hasher = _POSEIDON_N.get(len(inputs))
+    if hasher is None:
+        hasher = _POSEIDON_N[len(inputs)] = _build_poseidon_n(len(inputs))
+    return hasher(inputs)
 
 
 def leaf_hash(key: int, value: int) -> int:

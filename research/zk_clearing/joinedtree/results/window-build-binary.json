@@ -1,0 +1,1 @@
+{"tree": "window radix 2", "leaves": 119953, "levels": 17, "capacity": 131072, "root": "7247940468345899894523218850890561141831771460354911542081313138619255782166", "seconds": 97.0, "poseidon_by_inputs": {"2": 119979, "4": 119953}, "evaluations": 239932, "proof_bytes": 544}
