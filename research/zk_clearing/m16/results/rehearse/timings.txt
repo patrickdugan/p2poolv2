@@ -1,0 +1,4 @@
+scenario rehearse unchallenged: 160.50 s, 3448072 KiB max RSS
+scenario rehearse late: 484.62 s, 3448144 KiB max RSS
+scenario rehearse stall: 478.92 s, 11816 KiB max RSS
+scenario rehearse challenged: 278.61 s, 3448296 KiB max RSS

@@ -1,6 +1,6 @@
 # Roadmap: proof-backed share clearing
 
-Written 2026-11-01 after M1; M2 to M15 were executed the same day. This file is the status.
+Written 2026-11-01 after M1; M2 to M16 were executed the same day. This file is the status.
 
 **The question.** Can batched, proof-backed clearing of share sales between miners and market
 makers beat P2Poolv2's bilateral atomic swaps on cost or on guarantees?
@@ -38,6 +38,7 @@ on-chain fees are low.
 | M13 | Rising fees and batchHeight. A market rising from 10 to 20 sat/vB mid-assert: the operator replaced its CPFP child by RBF and A still landed with 3 blocks to spare; above MAX_FEE_RATE it paid 8.48 M sats for an assert the challenge priced at 4.25 M, and kept its bond. batchHeight is bound from both sides on chain: the kickoff's lock time is batchHeight, and the kickoff spends a deadline connector that anyone may sweep 4 blocks later, after which the kickoff can never confirm. Escrows refund through CLTV at an absolute expiry | [bitvm/M13.md](bitvm/M13.md) |
 | M14 | M11's signed-tree proof through BitVM: the payout template recomputes the chunked statement hash in Rust, opens both commitments and checks every signed payout, refund and escrow id. 359 of 364 disprove leaves are byte-identical to M3's (the other 5 embed the verifying key's IC); assert chain 336,520 vB; honest, tampered, mismatch, plus-r and stall behave as in M3 | [bitvm/M14.md](bitvm/M14.md) |
 | M15 | A dense window tree for ownership: a Poseidon tree over the anchor's live outputs in key order, with positions rising across sale slots so one output cannot fill two. 4,417 constraints per sale (binary) or 2,775 (eight-way) against M5's 11,438. Joined to M11's tree: 64×8 at 583,110 constraints, 34 s to prove. 1,024 sales: 8.6–10.3 M constraints instead of 17.5 M, phase-1 power 24, *est.* | [joinedtree/JOINED_TREE.md](joinedtree/JOINED_TREE.md) |
+| M16 | A simulated ceremony carried to a live-chain run. Phase 2 by three contributors in separate accounts, closed by the hash of a testnet4 block named before they contributed; `zkey verify` passes. BitVM's scripts for that key (49 of 432 leaves change size, the largest does not). The driver runs on a live chain: it waits for blocks, presigns at 100 sat/kvB and salts its keys. On a regtest chain mined by a timer, unchallenged, late, stall and challenged all behave as on M13's runs. The testnet4 run is ready and waits on 0.002 tBTC | [m16/M16.md](m16/M16.md) |
 
 What M1 taught:
 
@@ -138,7 +139,9 @@ Engineering that can be done next without anyone else:
 Waiting on Patrick or third parties (details in M8):
 
 - a public phase-1 file (Perpetual Powers of Tau) instead of the insecure local one, at power 23
-  or more for a day's signed batch;
+  or more for a day's signed batch. M16's `ceremony_sim.sh` takes it as an argument;
+- about 0.002 tBTC in the M16 testnet4 wallet (`run-m16.sh <work> address` prints the address)
+  for the testnet4 run. The local testnet4 wallets belong to other projects;
 - independent ceremony contributors and n-of-n committee signers. A MuSig2 aggregate key is
   one BIP340 key on chain, so M2's traces already cover the chain side; what is missing is
   independent people;
@@ -153,7 +156,7 @@ Waiting on Patrick or third parties (details in M8):
 
 All on `patrickdugan/p2poolv2`, each off `zk-clearing-roadmap` (6778e29e) unless noted.
 `zk-clearing-integration` merges them all, and `main` is fast-forwarded to it. M9 to M12 branch
-off `zk-clearing-integration` at 9fc8dc96, M13 to M15 at c4122f50.
+off `zk-clearing-integration` at 9fc8dc96, M13 to M15 at c4122f50. M16 is committed on `main`.
 
 | Milestone | Branch |
 |---|---|

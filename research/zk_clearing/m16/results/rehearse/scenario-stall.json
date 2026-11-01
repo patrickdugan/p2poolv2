@@ -1,0 +1,182 @@
+{
+  "anchor_sats": 330,
+  "assert_chain_bump_budget_at_max_fee_rate_sats": 119,
+  "batch_height": 244,
+  "bond_outpoint": "66eaa4ea6fe941ff88d4d74739509ab906cff54abf5f6d5337b06d146112f794:2",
+  "bond_sats": 5000,
+  "bond_unspent": true,
+  "bump_child_vbytes": 169,
+  "burn_sats": 2500,
+  "challenge_amount_sats": 47000,
+  "connector_sats": 330,
+  "deadline": {
+    "height": 248,
+    "outpoint": "66eaa4ea6fe941ff88d4d74739509ab906cff54abf5f6d5337b06d146112f794:6",
+    "sats": 1000
+  },
+  "escrow_expiry_height": 271,
+  "escrows": [
+    {
+      "buyer": "buyer1",
+      "outpoint": "66eaa4ea6fe941ff88d4d74739509ab906cff54abf5f6d5337b06d146112f794:3",
+      "sats": 4000
+    },
+    {
+      "buyer": "buyer2",
+      "outpoint": "66eaa4ea6fe941ff88d4d74739509ab906cff54abf5f6d5337b06d146112f794:5",
+      "sats": 4000
+    },
+    {
+      "buyer": "buyer3",
+      "outpoint": "66eaa4ea6fe941ff88d4d74739509ab906cff54abf5f6d5337b06d146112f794:0",
+      "sats": 2000
+    }
+  ],
+  "fee_rate_sat_per_kvb": 100,
+  "funded_height": 242,
+  "funding_blocks_late": 0,
+  "graph": "anchored",
+  "live_chain": true,
+  "market_fee_rate_sat_per_kvb": 100,
+  "max_fee_rate_sat_per_kvb": 100,
+  "mined_vbytes_total": 390,
+  "negative_early_refund": {
+    "note": "one block before the escrow expiry",
+    "rejected_block": "not tried on a live chain",
+    "rejected_mempool": "non-final",
+    "tip_height": 270,
+    "tx": "refund(early)",
+    "txid": "d4f3eda58de8ef135f408e3c1285ad3ef42a92f47691d2098edde140248d4338",
+    "vbytes": 130,
+    "weight": 518
+  },
+  "node_blockmintxfee": 1e-8,
+  "refunded_sats": [
+    3987,
+    3987,
+    1987
+  ],
+  "reserve": {
+    "outpoint": "66eaa4ea6fe941ff88d4d74739509ab906cff54abf5f6d5337b06d146112f794:4",
+    "sats": 45945
+  },
+  "reserve_unspent": true,
+  "scenario": "stall",
+  "template_outputs": [
+    {
+      "payee": "seller-alice",
+      "role": "seller",
+      "sats": 3000
+    },
+    {
+      "payee": "seller-bob",
+      "role": "seller",
+      "sats": 3000
+    },
+    {
+      "payee": "seller-carol",
+      "role": "seller",
+      "sats": 700
+    },
+    {
+      "payee": "refund-buyer1",
+      "role": "refund",
+      "sats": 1180
+    },
+    {
+      "payee": "refund-buyer2",
+      "role": "refund",
+      "sats": 880
+    },
+    {
+      "payee": "refund-buyer3",
+      "role": "refund",
+      "sats": 880
+    },
+    {
+      "payee": "operator-fee",
+      "role": "fee",
+      "sats": 360
+    }
+  ],
+  "template_signals_differ_from_proof": [],
+  "timing": {
+    "assert_blocks": 3,
+    "margin": 2,
+    "slack_blocks": [
+      {
+        "blocks": 5,
+        "constraint": "challenge: blocks to get a challenge mined after the kickoff"
+      },
+      {
+        "blocks": 6,
+        "constraint": "unchallenged payout: blocks before the timeout opens"
+      },
+      {
+        "blocks": 3,
+        "constraint": "assert: blocks to spare after a last-block challenge"
+      },
+      {
+        "blocks": 6,
+        "constraint": "disprove: blocks to get a disprove mined after A"
+      },
+      {
+        "blocks": 7,
+        "constraint": "refund: blocks the latest payout has before refunds open"
+      }
+    ],
+    "t_assert": 12,
+    "t_challenge": 6,
+    "t_disprove": 6,
+    "t_kickoff": 6,
+    "t_refund": 30
+  },
+  "transactions": [
+    {
+      "note": "one block before the escrow expiry",
+      "rejected_block": "not tried on a live chain",
+      "rejected_mempool": "non-final",
+      "tip_height": 270,
+      "tx": "refund(early)",
+      "txid": "d4f3eda58de8ef135f408e3c1285ad3ef42a92f47691d2098edde140248d4338",
+      "vbytes": 130,
+      "weight": 518
+    },
+    {
+      "inputs": 1,
+      "mempool_now": "accepted",
+      "mined_height": 272,
+      "mined_via": "network",
+      "note": "escrow refund leaf after T_refund",
+      "outputs": 1,
+      "tx": "refund[buyer1]",
+      "txid": "d4f3eda58de8ef135f408e3c1285ad3ef42a92f47691d2098edde140248d4338",
+      "vbytes": 130,
+      "weight": 518
+    },
+    {
+      "inputs": 1,
+      "mempool_now": "accepted",
+      "mined_height": 272,
+      "mined_via": "network",
+      "note": "escrow refund leaf after T_refund",
+      "outputs": 1,
+      "tx": "refund[buyer2]",
+      "txid": "effb8651e9134a89589cbc75944e80bc32d0d99cbe3cba8c4406ce10381eca78",
+      "vbytes": 130,
+      "weight": 518
+    },
+    {
+      "inputs": 1,
+      "mempool_now": "accepted",
+      "mined_height": 272,
+      "mined_via": "network",
+      "note": "escrow refund leaf after T_refund",
+      "outputs": 1,
+      "tx": "refund[buyer3]",
+      "txid": "be4ea33bbccb7c1b44bb539dc82b551adbdda2187992c2ded486384bf19e8eb4",
+      "vbytes": 130,
+      "weight": 518
+    }
+  ]
+}

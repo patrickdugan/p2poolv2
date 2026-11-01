@@ -1,0 +1,45 @@
+ceremony for accounting16x4_committed, r1cs sha256 9428060d71f20a581ed44b5a2ef9a55205e795de62cf9ed5a94f9205918cc795
+phase 1: pot20_final.ptau, sha256 53df507ccac51c5383fd53effcf33ef01f0317d1f8767db0fe5b2cc300ddbbd0
+beacon: the hash of testnet4 block 158478, named 2026-11-01T11:32:12Z before any contribution
+contribution 1 by zkc-contrib-1 (uid 1002): 1.5 s
+[INFO] snarkJS: Contribution Hash:  		cf6ab85b e76d2995 6de073c2 f61fae07 		04cca84c 4ebdf6e2 d8c9bed4 dfbfe00a 		9cc08cf5 fb9ba6b4 b3513c00 b7d90657 		f526b65b 324562f5 838817cc f7442d99 
+
+contribution 2 by zkc-contrib-2 (uid 1003): 1.5 s
+[INFO] snarkJS: Contribution Hash:  		a220bbe7 bd64d191 65ef3611 5f078f85 		a1321cbf 44801a79 7484b966 eddea26e 		a44e7696 64079637 dc5aadc6 3f751e37 		b0aabb94 6d8a2962 f830a7cb 4c04d763 
+
+contribution 3 by zkc-contrib-3 (uid 1004): 1.3 s
+[INFO] snarkJS: Contribution Hash:  		541bb141 79220d43 4939a56c 7171fc2c 		23ee1933 c0ff4c32 b8f205be 95e55f3b 		60072552 1466af9a accc7836 f5e73617 		c79453a2 778f35b6 9725bae4 e69ec961 
+
+contributions done; waiting for the beacon block 158478
+beacon block hash: 00000000569882f18a806f83f272c1e438ad5f0207694e81cabbfa40619e8058
+zkey verify: ZKey Ok!
+		aed8c0e0 bef90531 d8673959 9dcf285e
+		3077398d 83f23ffb 47c1de4c 09adbde0
+		2d6351e0 2d1f8cb4 96914878 f765c706
+		0e7ea338 54ef80bd c23446ad 284b956a
+		aed8c0e0 bef90531 d8673959 9dcf285e
+		3077398d 83f23ffb 47c1de4c 09adbde0
+		2d6351e0 2d1f8cb4 96914878 f765c706
+		0e7ea338 54ef80bd c23446ad 284b956a
+[INFO]  snarkJS: contribution #4 testnet4 block hash beacon:
+		5bc3ac0b de2308ed 3975b078 54643a8f
+		af202f7f 9bec7868 c6af58f9 cea2ae9f
+		a894e801 5680376d c253d483 d475ecdb
+		a7e1d26f a2546e03 6271d0ac 93f51710
+[INFO]  snarkJS: Beacon generator: 00000000569882f18a806f83f272c1e438ad5f0207694e81cabbfa40619e8058
+[INFO]  snarkJS: contribution #3 contributor 3 (zkc-contrib-3):
+		541bb141 79220d43 4939a56c 7171fc2c
+		23ee1933 c0ff4c32 b8f205be 95e55f3b
+		60072552 1466af9a accc7836 f5e73617
+		c79453a2 778f35b6 9725bae4 e69ec961
+[INFO]  snarkJS: contribution #2 contributor 2 (zkc-contrib-2):
+		a220bbe7 bd64d191 65ef3611 5f078f85
+		a1321cbf 44801a79 7484b966 eddea26e
+		a44e7696 64079637 dc5aadc6 3f751e37
+		b0aabb94 6d8a2962 f830a7cb 4c04d763
+[INFO]  snarkJS: contribution #1 contributor 1 (zkc-contrib-1):
+		cf6ab85b e76d2995 6de073c2 f61fae07
+		04cca84c 4ebdf6e2 d8c9bed4 dfbfe00a
+		9cc08cf5 fb9ba6b4 b3513c00 b7d90657
+		f526b65b 324562f5 838817cc f7442d99
+verifying key sha256: e1574341d768a2b3166cf6eff416112a3867d768d3dd8aabd1945664291f8ae1

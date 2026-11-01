@@ -1,0 +1,369 @@
+{
+  "a_height_minus_kickoff_height": 8,
+  "anchor_sats": 330,
+  "assert_chain_bump_budget_at_max_fee_rate_sats": 119,
+  "asserted_differs_from_template": [],
+  "batch_height": 275,
+  "bitvm_validate": "skipped (ZKC_VALIDATE=0)",
+  "blocks_to_spare_before_timeout": 3,
+  "bond_outpoint": "6f705205fce466fd5204ac89758ff9e9d6481c5f42f133ceea0ad1de17762c80:0",
+  "bond_sats": 5000,
+  "bump_child_vbytes": 169,
+  "burn_sats": 2500,
+  "challenge_amount_sats": 47000,
+  "challenge_height_minus_kickoff_height": 5,
+  "connector_sats": 330,
+  "deadline": {
+    "height": 279,
+    "outpoint": "6f705205fce466fd5204ac89758ff9e9d6481c5f42f133ceea0ad1de17762c80:7",
+    "sats": 1000
+  },
+  "escrow_expiry_height": 302,
+  "escrows": [
+    {
+      "buyer": "buyer1",
+      "outpoint": "6f705205fce466fd5204ac89758ff9e9d6481c5f42f133ceea0ad1de17762c80:5",
+      "sats": 4000
+    },
+    {
+      "buyer": "buyer2",
+      "outpoint": "6f705205fce466fd5204ac89758ff9e9d6481c5f42f133ceea0ad1de17762c80:3",
+      "sats": 4000
+    },
+    {
+      "buyer": "buyer3",
+      "outpoint": "6f705205fce466fd5204ac89758ff9e9d6481c5f42f133ceea0ad1de17762c80:2",
+      "sats": 2000
+    }
+  ],
+  "fee_rate_sat_per_kvb": 100,
+  "funded_height": 273,
+  "funding_blocks_late": 0,
+  "graph": "anchored",
+  "kickoff_blocks_after_funding": 3,
+  "kickoff_height": 276,
+  "live_chain": true,
+  "market_fee_rate_sat_per_kvb": 100,
+  "max_fee_rate_sat_per_kvb": 100,
+  "mempool_probe_first_commit_with_unconfirmed_parent": "accepted",
+  "mempool_probe_second_commit_with_unconfirmed_parent": "too-large-cluster",
+  "mined_vbytes_total": 424117,
+  "negative_early_payout": {
+    "note": "one block before T_disprove",
+    "rejected_block": "not tried on a live chain",
+    "rejected_mempool": "non-BIP68-final",
+    "tip_height": 288,
+    "tx": "payout_asserted(early)",
+    "txid": "5d54064054e2602e206754904545a9385aa712172893639adab1c285a7804cad",
+    "vbytes": 692,
+    "weight": 2768
+  },
+  "negative_kickoff_before_batch_height": {
+    "note": "nLockTime 275, the statement's batchHeight",
+    "probe": "missed: the chain moved past the height first",
+    "tip_height": 275,
+    "tx": "kickoff(before batchHeight)",
+    "txid": "4de9fba3d82dcca5f953d21b248a69eda719c3c244fdc0c01323261fd48bdde0"
+  },
+  "negative_payout_unchallenged_after_challenge": {
+    "note": "T_challenge reached; KC spent by the challenge",
+    "rejected_block": "not tried on a live chain",
+    "rejected_mempool": "missing-inputs",
+    "tip_height": 281,
+    "tx": "payout_unchallenged(challenged)",
+    "txid": "55d0bc0c03c64d8f016097bf98feb18b61a20f8680c71c57c6a16cf9a5928a58",
+    "vbytes": 700,
+    "weight": 2798
+  },
+  "negative_timeout_after_assert": {
+    "note": "T_assert reached; KA spent by assert_final",
+    "rejected_block": "not tried on a live chain",
+    "rejected_mempool": "missing-inputs",
+    "tip_height": 290,
+    "tx": "timeout(after assert)",
+    "txid": "9f1f2b4fbe586e5b529ccd9e31bd810f1eb7a2d61804bce08cb3c5ab995a1039",
+    "vbytes": 179,
+    "weight": 716
+  },
+  "node_blockmintxfee": 1e-8,
+  "operator_back_sats": 6526,
+  "payout_outputs_equal_template": true,
+  "reserve": {
+    "outpoint": "6f705205fce466fd5204ac89758ff9e9d6481c5f42f133ceea0ad1de17762c80:6",
+    "sats": 45945
+  },
+  "scenario": "challenged",
+  "setup": {
+    "a_outpoint": "2f15572153c9af9cc1b1d2bd352ca5d72ff450fd9094ed3c778dce05b28d5e33:0",
+    "a_sats": 1616,
+    "a_tree": {
+      "binding_leaves": 18,
+      "bitvm_leaf_bytes_total": 1289259807,
+      "bitvm_leaves": 432,
+      "depth": 9,
+      "leaves": 451
+    },
+    "assert_final_vbytes": 442,
+    "assert_init_fee_sats": 192,
+    "challenge_signature_bytes": 65,
+    "commit_fees_sats": [
+      9080,
+      9239,
+      9239,
+      9239,
+      5315
+    ],
+    "commit_groups": [
+      9,
+      9,
+      9,
+      9,
+      6
+    ],
+    "committee_signatures": {
+      "assert_final (KA)": 1,
+      "challenge (SINGLE|ANYONECANPAY)": 1,
+      "disprove (SINGLE on KB, any leaf of A)": 1,
+      "payout_asserted": 5,
+      "payout_unchallenged": 6,
+      "timeout (SINGLE on KB, NONE on KA)": 2
+    },
+    "kb_sats": 4980,
+    "kickoff_txid": "4de9fba3d82dcca5f953d21b248a69eda719c3c244fdc0c01323261fd48bdde0",
+    "kickoff_vbytes": 298,
+    "payout_asserted_vbytes": 692,
+    "payout_unchallenged_vbytes": 700,
+    "payout_version": 3,
+    "presigned_payout_asserted_txid": "5d54064054e2602e206754904545a9385aa712172893639adab1c285a7804cad",
+    "presigned_payout_unchallenged_txid": "55d0bc0c03c64d8f016097bf98feb18b61a20f8680c71c57c6a16cf9a5928a58"
+  },
+  "template_outputs": [
+    {
+      "payee": "seller-alice",
+      "role": "seller",
+      "sats": 3000
+    },
+    {
+      "payee": "seller-bob",
+      "role": "seller",
+      "sats": 3000
+    },
+    {
+      "payee": "seller-carol",
+      "role": "seller",
+      "sats": 700
+    },
+    {
+      "payee": "refund-buyer1",
+      "role": "refund",
+      "sats": 1180
+    },
+    {
+      "payee": "refund-buyer2",
+      "role": "refund",
+      "sats": 880
+    },
+    {
+      "payee": "refund-buyer3",
+      "role": "refund",
+      "sats": 880
+    },
+    {
+      "payee": "operator-fee",
+      "role": "fee",
+      "sats": 360
+    }
+  ],
+  "template_signals_differ_from_proof": [],
+  "timing": {
+    "assert_blocks": 3,
+    "margin": 2,
+    "slack_blocks": [
+      {
+        "blocks": 5,
+        "constraint": "challenge: blocks to get a challenge mined after the kickoff"
+      },
+      {
+        "blocks": 6,
+        "constraint": "unchallenged payout: blocks before the timeout opens"
+      },
+      {
+        "blocks": 3,
+        "constraint": "assert: blocks to spare after a last-block challenge"
+      },
+      {
+        "blocks": 6,
+        "constraint": "disprove: blocks to get a disprove mined after A"
+      },
+      {
+        "blocks": 7,
+        "constraint": "refund: blocks the latest payout has before refunds open"
+      }
+    ],
+    "t_assert": 12,
+    "t_challenge": 6,
+    "t_disprove": 6,
+    "t_kickoff": 6,
+    "t_refund": 30
+  },
+  "transactions": [
+    {
+      "note": "nLockTime 275, the statement's batchHeight",
+      "probe": "missed: the chain moved past the height first",
+      "tip_height": 275,
+      "tx": "kickoff(before batchHeight)",
+      "txid": "4de9fba3d82dcca5f953d21b248a69eda719c3c244fdc0c01323261fd48bdde0"
+    },
+    {
+      "inputs": 2,
+      "mempool_now": "accepted",
+      "mined_height": 276,
+      "mined_via": "network",
+      "note": "bond -> KC + KA + KB + anchor",
+      "outputs": 4,
+      "tx": "kickoff",
+      "txid": "4de9fba3d82dcca5f953d21b248a69eda719c3c244fdc0c01323261fd48bdde0",
+      "vbytes": 298,
+      "weight": 1190
+    },
+    {
+      "inputs": 2,
+      "mempool_now": "accepted",
+      "mined_height": 281,
+      "mined_via": "network",
+      "note": "KC (presigned SINGLE|ANYONECANPAY) + challenger's coin",
+      "outputs": 2,
+      "tx": "challenge",
+      "txid": "a1b1dc8976ec0333ec3185adad8aa9b6c40df5c7e5896d3acf04cea9c41844a3",
+      "vbytes": 212,
+      "weight": 847
+    },
+    {
+      "note": "T_challenge reached; KC spent by the challenge",
+      "rejected_block": "not tried on a live chain",
+      "rejected_mempool": "missing-inputs",
+      "tip_height": 281,
+      "tx": "payout_unchallenged(challenged)",
+      "txid": "55d0bc0c03c64d8f016097bf98feb18b61a20f8680c71c57c6a16cf9a5928a58",
+      "vbytes": 700,
+      "weight": 2798
+    },
+    {
+      "inputs": 1,
+      "mempool_now": "accepted",
+      "mined_height": 282,
+      "mined_via": "network",
+      "note": "reserve -> commit outputs",
+      "outputs": 43,
+      "tx": "assert_init",
+      "txid": "a4e9c10db0050bcdefd28ce05a41ee8423c39f76c34b77a1dfbe9c746dbf3492",
+      "vbytes": 1917,
+      "weight": 7668
+    },
+    {
+      "inputs": 9,
+      "mempool_now": "accepted",
+      "mined_height": 282,
+      "mined_via": "network",
+      "note": "9 Winternitz batches; parent unconfirmed",
+      "outputs": 2,
+      "tx": "commit[0]",
+      "txid": "2d71f98d9f1d6ac82cbbba845b54318f2646ef61d442fcf912e1d1f9afcfc7c4",
+      "vbytes": 90525,
+      "weight": 362097
+    },
+    {
+      "inputs": 9,
+      "mempool_now": "accepted",
+      "mined_height": 283,
+      "mined_via": "network",
+      "note": "9 Winternitz batches",
+      "outputs": 2,
+      "tx": "commit[1]",
+      "txid": "3eecdcf4ad75f929bbf29f6addf3ae02e80948d3647182bbb8cd2eebf25cbb8f",
+      "vbytes": 92307,
+      "weight": 369225
+    },
+    {
+      "inputs": 9,
+      "mempool_now": "accepted",
+      "mined_height": 283,
+      "mined_via": "network",
+      "note": "9 Winternitz batches",
+      "outputs": 2,
+      "tx": "commit[2]",
+      "txid": "9752b34479cb8783e74441505b7dd02a75184af6269f786546fafde4cd0a3ef4",
+      "vbytes": 92310,
+      "weight": 369238
+    },
+    {
+      "inputs": 9,
+      "mempool_now": "accepted",
+      "mined_height": 283,
+      "mined_via": "network",
+      "note": "9 Winternitz batches",
+      "outputs": 2,
+      "tx": "commit[3]",
+      "txid": "12aa5918a2a6a2ca540c49a6a2b02a46df3471bb7bef03265d9a0e05875dbacf",
+      "vbytes": 92312,
+      "weight": 369246
+    },
+    {
+      "inputs": 6,
+      "mempool_now": "accepted",
+      "mined_height": 283,
+      "mined_via": "network",
+      "note": "6 Winternitz batches",
+      "outputs": 2,
+      "tx": "commit[4]",
+      "txid": "d0365968e2a08e8ea3145b6e30a6da4cacc41dfaa61f3bb2fb536983c28b31ff",
+      "vbytes": 53102,
+      "weight": 212406
+    },
+    {
+      "inputs": 6,
+      "mempool_now": "accepted",
+      "mined_height": 284,
+      "mined_via": "network",
+      "note": "KA + every D_k -> A",
+      "outputs": 2,
+      "tx": "assert_final",
+      "txid": "2f15572153c9af9cc1b1d2bd352ca5d72ff450fd9094ed3c778dce05b28d5e33",
+      "vbytes": 442,
+      "weight": 1766
+    },
+    {
+      "note": "one block before T_disprove",
+      "rejected_block": "not tried on a live chain",
+      "rejected_mempool": "non-BIP68-final",
+      "tip_height": 288,
+      "tx": "payout_asserted(early)",
+      "txid": "5d54064054e2602e206754904545a9385aa712172893639adab1c285a7804cad",
+      "vbytes": 692,
+      "weight": 2768
+    },
+    {
+      "inputs": 5,
+      "mempool_now": "accepted",
+      "mined_height": 290,
+      "mined_via": "network",
+      "note": "A after T_disprove + KB + every escrow",
+      "outputs": 8,
+      "tx": "payout_asserted",
+      "txid": "5d54064054e2602e206754904545a9385aa712172893639adab1c285a7804cad",
+      "vbytes": 692,
+      "weight": 2768
+    },
+    {
+      "note": "T_assert reached; KA spent by assert_final",
+      "rejected_block": "not tried on a live chain",
+      "rejected_mempool": "missing-inputs",
+      "tip_height": 290,
+      "tx": "timeout(after assert)",
+      "txid": "9f1f2b4fbe586e5b529ccd9e31bd810f1eb7a2d61804bce08cb3c5ab995a1039",
+      "vbytes": 179,
+      "weight": 716
+    }
+  ],
+  "watcher_check_pi_verifies_for_template": true
+}
