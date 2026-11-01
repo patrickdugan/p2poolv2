@@ -1,0 +1,52 @@
+== groth16 setup and batch proof (prove-batch.sh signed_tree_16x4)
+2026-11-01T14:14:12+08:00
+prove-batch.sh: 119.55 s, 2258280 KiB max RSS
+2026-11-01T14:16:11+08:00
+  compile                         16.49 s   1389196 KiB max RSS
+  groth16 setup + beacon          44.10 s   1589864 KiB max RSS
+  groth16 prove                    5.79 s   2248144 KiB max RSS
+  groth16 verify (CLI)             0.81 s    304832 KiB max RSS
+== build.sh (ZKC_PUBS=1, warm cargo cache) and tests
+  test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+  test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+  test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+  test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+  test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+  build.sh: 50.84 s, 543996 KiB max RSS
+== clean prepare 2026-11-01T14:21:52+08:00
+[time] partial disprove scripts: 125.5 s
+[time] full tapscripts: 5.8 s
+[time] assertions honest: 252.8 s
+[time] assertions tampered: 163.8 s
+  clean prepare: 538.59 s, 5950684 KiB max RSS
+== scenarios 2026-11-01T14:31:45+08:00
+[time] partial disprove scripts: 1.4 s
+[time] full tapscripts: 4.7 s
+prepare: 6.35 s, 2948932 KiB max RSS
+== scenario honest
+[time] partial disprove scripts: 1.6 s
+[time] full tapscripts: 4.4 s
+[time] challenger validates the honest assertion: 142.0 s
+scenario honest: 252.74 s, 3270344 KiB max RSS
+== scenario tampered
+[time] partial disprove scripts: 18.3 s
+[time] full tapscripts: 17.5 s
+[time] challenger validates: 132.6 s
+scenario tampered: 258.10 s, 3257964 KiB max RSS
+== scenario mismatch
+[time] partial disprove scripts: 10.6 s
+[time] full tapscripts: 5.8 s
+[time] challenger validates: 138.3 s
+scenario mismatch: 156.81 s, 3266720 KiB max RSS
+== scenario plus-r
+[time] partial disprove scripts: 17.5 s
+[time] full tapscripts: 7.1 s
+[time] challenger validates: 3.0 s
+scenario plus-r: 111.17 s, 3265160 KiB max RSS
+== scenario stall
+scenario stall: 2.94 s, 7300 KiB max RSS
+== selftest 2026-11-01T14:45:21+08:00
+[time] partial disprove scripts: 1.3 s
+[time] full tapscripts (selftest): 3.5 s
+[time] validate x + r on statementHash: 2.5 s
+  selftest --all-plus-r: 7.92 s, 2949064 KiB max RSS

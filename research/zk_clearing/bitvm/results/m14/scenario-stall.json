@@ -1,0 +1,216 @@
+{
+  "bond_sats": 10000000,
+  "escrow_last_funded_height": 320,
+  "escrows": [
+    {
+      "buyer": "scale-buyer:0",
+      "outpoint": "ed0637099e3075e8fb578930c3da0d050019b37c60bedfbec1ba75d929b3b7c5:1",
+      "sats": 225435
+    },
+    {
+      "buyer": "scale-buyer:1",
+      "outpoint": "021400a4d8057ced4442925db72fc0dd8e290b545e1026ca63bb270b327dbbdc:0",
+      "sats": 165675
+    },
+    {
+      "buyer": "scale-buyer:2",
+      "outpoint": "68139b56d98c8d4351153f50f80a83cb46ca03ae23f024cd704b6f74d2884495:0",
+      "sats": 184341
+    },
+    {
+      "buyer": "scale-buyer:3",
+      "outpoint": "0d19fe0c062c0e4fe90502abadb6c609d3ac8163ee23c52f203a17c21963cf37:0",
+      "sats": 191144
+    }
+  ],
+  "fee_rate_sat_per_vb": 2,
+  "negative_early_refund": {
+    "note": "one block before T_refund",
+    "rejected_block": "TestBlockValidity failed: bad-txns-nonfinal, contains a non-BIP68-final transaction dbaceb808b95af7404c356a81009fe574c92e185060abc97335abd63350b7cc7",
+    "rejected_mempool": "non-BIP68-final",
+    "tx": "refund(early)",
+    "txid": "dbaceb808b95af7404c356a81009fe574c92e185060abc97335abd63350b7cc7",
+    "vbytes": 138,
+    "weight": 549
+  },
+  "num_pubs": 1,
+  "refunded_sats": [
+    225159,
+    165399,
+    184065,
+    190868
+  ],
+  "scenario": "stall",
+  "statement_hashed": true,
+  "statement_kind": "SignedTree { sales: 16, buyers: 4 }",
+  "t_challenge": 6,
+  "t_refund": 30,
+  "template_outputs": [
+    {
+      "payee": "scale-payout:0",
+      "role": "seller",
+      "sats": 61158
+    },
+    {
+      "payee": "scale-payout:1",
+      "role": "seller",
+      "sats": 90377
+    },
+    {
+      "payee": "scale-payout:2",
+      "role": "seller",
+      "sats": 79381
+    },
+    {
+      "payee": "scale-payout:3",
+      "role": "seller",
+      "sats": 39657
+    },
+    {
+      "payee": "scale-payout:4",
+      "role": "seller",
+      "sats": 69679
+    },
+    {
+      "payee": "scale-payout:5",
+      "role": "seller",
+      "sats": 4521
+    },
+    {
+      "payee": "scale-payout:6",
+      "role": "seller",
+      "sats": 68986
+    },
+    {
+      "payee": "scale-payout:7",
+      "role": "seller",
+      "sats": 4828
+    },
+    {
+      "payee": "scale-payout:8",
+      "role": "seller",
+      "sats": 24815
+    },
+    {
+      "payee": "scale-payout:9",
+      "role": "seller",
+      "sats": 23299
+    },
+    {
+      "payee": "scale-payout:10",
+      "role": "seller",
+      "sats": 17859
+    },
+    {
+      "payee": "scale-payout:11",
+      "role": "seller",
+      "sats": 45872
+    },
+    {
+      "payee": "scale-payout:12",
+      "role": "seller",
+      "sats": 30701
+    },
+    {
+      "payee": "scale-payout:13",
+      "role": "seller",
+      "sats": 16098
+    },
+    {
+      "payee": "scale-payout:14",
+      "role": "seller",
+      "sats": 1884
+    },
+    {
+      "payee": "scale-payout:15",
+      "role": "seller",
+      "sats": 79187
+    },
+    {
+      "payee": "scale-refund:0",
+      "role": "refund",
+      "sats": 38000
+    },
+    {
+      "payee": "scale-refund:1",
+      "role": "refund",
+      "sats": 31000
+    },
+    {
+      "payee": "scale-refund:2",
+      "role": "refund",
+      "sats": 12000
+    },
+    {
+      "payee": "scale-refund:3",
+      "role": "refund",
+      "sats": 17000
+    },
+    {
+      "payee": "operator-fee",
+      "role": "fee",
+      "sats": 10293
+    }
+  ],
+  "template_signals_differ_from_proof": [],
+  "template_statement_differs_from_proof": [],
+  "transactions": [
+    {
+      "note": "one block before T_refund",
+      "rejected_block": "TestBlockValidity failed: bad-txns-nonfinal, contains a non-BIP68-final transaction dbaceb808b95af7404c356a81009fe574c92e185060abc97335abd63350b7cc7",
+      "rejected_mempool": "non-BIP68-final",
+      "tx": "refund(early)",
+      "txid": "dbaceb808b95af7404c356a81009fe574c92e185060abc97335abd63350b7cc7",
+      "vbytes": 138,
+      "weight": 549
+    },
+    {
+      "inputs": 1,
+      "mempool_now": "accepted",
+      "mined_height": 350,
+      "mined_via": "mempool",
+      "note": "escrow refund leaf after T_refund",
+      "outputs": 1,
+      "tx": "refund[scale-buyer:0]",
+      "txid": "b95217d47c94830e723c71bf87931c2dbac1d0dac7e9bac7c3272ef0dddb809c",
+      "vbytes": 138,
+      "weight": 549
+    },
+    {
+      "inputs": 1,
+      "mempool_now": "accepted",
+      "mined_height": 350,
+      "mined_via": "mempool",
+      "note": "escrow refund leaf after T_refund",
+      "outputs": 1,
+      "tx": "refund[scale-buyer:1]",
+      "txid": "7e554e467a4525a6f638adec8fe6d8d05aada5b13f5f34c1b2b0cd67eaee2be4",
+      "vbytes": 138,
+      "weight": 549
+    },
+    {
+      "inputs": 1,
+      "mempool_now": "accepted",
+      "mined_height": 350,
+      "mined_via": "mempool",
+      "note": "escrow refund leaf after T_refund",
+      "outputs": 1,
+      "tx": "refund[scale-buyer:2]",
+      "txid": "1971374b7eec58e279c34d81e603cb2b7eb63fd397fa30a262abfc38a825eeb4",
+      "vbytes": 138,
+      "weight": 549
+    },
+    {
+      "inputs": 1,
+      "mempool_now": "accepted",
+      "mined_height": 350,
+      "mined_via": "mempool",
+      "note": "escrow refund leaf after T_refund",
+      "outputs": 1,
+      "tx": "refund[scale-buyer:3]",
+      "txid": "dbaceb808b95af7404c356a81009fe574c92e185060abc97335abd63350b7cc7",
+      "vbytes": 138,
+      "weight": 549
+    }
+  ]
+}

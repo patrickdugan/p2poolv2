@@ -5,7 +5,7 @@
 #
 # 1. BitVM c620dbf is cloned into <work>/BitVM-c620dbf (from $BITVM_SRC if set, a local clone
 #    or URL, else GitHub) and patches/0001-bitvm-18-public-inputs.patch is applied. With
-#    ZKC_PUBS=1 (M3, accounting16x4_hashed) patches/0002-bitvm-1-public-input.patch is applied
+#    ZKC_PUBS=1 (M3 accounting16x4_hashed, M14 signed_tree_16x4) patches/0002-bitvm-1-public-input.patch is applied
 #    on top, setting NUM_PUBS back to 1.
 # 2. research/zk_clearing is copied to <work>/src, with vendor/BitVM linked to that checkout.
 # 3. cargo build --release, then cargo test --release. Cargo.lock is seeded from BitVM's lock
@@ -22,7 +22,7 @@ BITVM="$WORK/BitVM-$BITVM_REV"
 case "${ZKC_PUBS:-18}" in
   18) PATCHES=(0001-bitvm-18-public-inputs.patch) ;;
   1) PATCHES=(0001-bitvm-18-public-inputs.patch 0002-bitvm-1-public-input.patch) ;;
-  *) echo "ZKC_PUBS must be 18 (M1) or 1 (M3)"; exit 2 ;;
+  *) echo "ZKC_PUBS must be 18 (M1) or 1 (M3, M14)"; exit 2 ;;
 esac
 
 if [ "$(cat "$BITVM/.zkc-patched" 2>/dev/null)" != "${PATCHES[*]}" ]; then

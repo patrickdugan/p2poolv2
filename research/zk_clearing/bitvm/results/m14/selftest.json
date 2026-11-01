@@ -1,0 +1,21 @@
+{
+  "binding_leaves": [
+    {
+      "honest_opens": false,
+      "leaf_bytes": 10521,
+      "opens_on_x_plus_r": true,
+      "opens_when_template_is_S_prime": true,
+      "signal": "statementHash"
+    }
+  ],
+  "commit_batches": 33,
+  "commit_max_stack_items": 901,
+  "plus_r_sweep": [
+    {
+      "disprove_leaf": 2,
+      "leaf_bytes": 2531040,
+      "signal": "statementHash",
+      "witness_items": 102
+    }
+  ]
+}

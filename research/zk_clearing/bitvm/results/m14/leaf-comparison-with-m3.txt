@@ -1,0 +1,27 @@
+partial scripts: 364 same size: 360 byte-identical: 359
+size differs: [(2, 2505932, 2505894), (3, 2588567, 2588502), (4, 2588552, 2588531), (5, 2588542, 2588586)]
+content differs at 5 leaves: [2, 3, 4, 5, 6]
+commit_batches 33 33 EQUAL
+disprove_leaves 364 364 EQUAL
+max_bytes 3948062 3948062 EQUAL
+max_leaf_index 357 357 EQUAL
+median_bytes 2889666 2889666 EQUAL
+min_bytes 338312 338312 EQUAL
+num_hash 363 363 EQUAL
+num_pubs 1 1 EQUAL
+num_u256 14 14 EQUAL
+over_400k_weight 362 362 EQUAL
+total_bytes 1110838527 1110838447 DIFF
+winternitz_values 378 378 EQUAL
+sizes arrays equal: False
+vk (M3 hashed vs M14 signed_tree_16x4): protocol equal
+vk (M3 hashed vs M14 signed_tree_16x4): curve equal
+vk (M3 hashed vs M14 signed_tree_16x4): nPublic equal
+vk (M3 hashed vs M14 signed_tree_16x4): vk_alpha_1 equal
+vk (M3 hashed vs M14 signed_tree_16x4): vk_beta_2 equal
+vk (M3 hashed vs M14 signed_tree_16x4): vk_gamma_2 equal
+vk (M3 hashed vs M14 signed_tree_16x4): vk_delta_2 equal
+vk (M3 hashed vs M14 signed_tree_16x4): vk_alphabeta_12 equal
+vk (M3 hashed vs M14 signed_tree_16x4): IC differs
+vk (M3 hashed vs M14 signed_tree_16x4): 2 2
+vk (M3 hashed vs M14 signed_tree_16x4): [False, False]
