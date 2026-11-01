@@ -5,6 +5,13 @@
 //! single public signal of accounting16x4_hashed, statementHash, and the payout template is
 //! built from the statement that hashes to it (<work>/batch/statement.json).
 //!
+//! M14: the same build settles M11's signed-tree proof. The statement layout is chosen by the
+//! circuit name in <work>/batch/circuit.txt (written by prove-batch.sh): `signed_tree_16x4`
+//! selects the 20-value signed-tree statement, hashed by PoseidonChunked, whose template
+//! (template::build_signed) also opens saleCommitment and escrowCommitment from
+//! <work>/batch/input.json and checks the payee labels in opening.json against the signed ids.
+//! Without circuit.txt (the M1 and M3 batches) the statement is the 18 accounting values.
+//!
 //! Usage:
 //!   zkc-m1 prepare  <work>             disprove scripts and assertions (cached under <work>/m1)
 //!   zkc-m1 disproves <work>            M12: every disprove transaction's weight (<work>/m12)
@@ -43,18 +50,18 @@ const PLUS_R_SIGNAL: usize = if HASHED { 0 } else { template::refund(1) };
 /// The public signal whose binding leaf the mismatch scenario opens: refund[0] (M1),
 /// statementHash (M3).
 const MISMATCH_SIGNAL: usize = if HASHED { 0 } else { template::refund(0) };
-/// The tampered statement: 50,000 sats of refund moved from buyer slot 1 to slot 0. Total
-/// conservation still holds, so the template accepts it; buyer slot 0's own equation
-/// funding = cost + fee + refund fails, so no valid proof exists for it.
-const MOVED: u64 = 50_000;
 
 struct Inputs {
     work: PathBuf,
+    /// The statement layout (`circuit.txt`): M1's and M3's 18 accounting values, or M11's
+    /// signed-tree statement.
+    kind: template::Kind,
     vk: VerifyingKey<Bn254>,
     proof: Proof<Bn254>,
     /// The proof's public signals (NUM_PUBS of them).
     signals: Vec<BigUint>,
-    /// The 18-value clearing statement: `signals` itself in M1, its hash preimage in M3.
+    /// The clearing statement: `signals` itself in M1, its hash preimage in M3 (18 values) and
+    /// M14 (4 + 4B values).
     statement: Vec<BigUint>,
     input: Value,
     opening: Value,
@@ -65,8 +72,19 @@ fn read_json(path: &Path) -> Value {
     serde_json::from_str(&std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))).unwrap()
 }
 
+/// The statement layout of the batch: the circuit name in `<batch>/circuit.txt`. M1 and M3 batches
+/// have no such file and use the 18 accounting values.
+fn batch_kind(batch: &Path) -> template::Kind {
+    match std::fs::read_to_string(batch.join("circuit.txt")) {
+        Ok(name) => template::Kind::from_circuit(name.trim()).unwrap_or_else(|e| panic!("{}: {e}", batch.join("circuit.txt").display())),
+        Err(_) => template::Kind::Accounting,
+    }
+}
+
 fn load(work: &Path) -> Inputs {
     let batch = work.join("batch");
+    let kind = batch_kind(&batch);
+    assert!(kind == template::Kind::Accounting || HASHED, "a signed-tree statement needs the 1-public-input build (ZKC_PUBS=1)");
     let vk = zkc_convert::vk_from_snarkjs(&read_json(&batch.join("verification_key.json"))).unwrap();
     let proof = zkc_convert::proof_from_snarkjs(&read_json(&batch.join("proof.json"))).unwrap();
     let public = read_json(&batch.join("public.json"));
@@ -79,9 +97,10 @@ fn load(work: &Path) -> Inputs {
     } else {
         signals.clone()
     };
-    assert_eq!(public_of(&statement), signals, "the statement does not match the proof's public signals");
-    Inputs {
+    assert_eq!(statement.len(), kind.statement_len(), "statement length for {kind:?}");
+    let inp = Inputs {
         work: work.to_path_buf(),
+        kind,
         vk,
         proof,
         signals,
@@ -89,13 +108,23 @@ fn load(work: &Path) -> Inputs {
         input: read_json(&batch.join("input.json")),
         opening: read_json(&batch.join("opening.json")),
         commitment: std::fs::read_to_string(batch.join("sale_commitment.txt")).unwrap().trim().parse().unwrap(),
+    };
+    assert_eq!(public_of(kind, &inp.statement), inp.signals, "the statement does not match the proof's public signals");
+    if let template::Kind::SignedTree { buyers, .. } = kind {
+        // Two implementations of the commitments agree: circomlibjs (prove-batch.sh) and the Rust
+        // template (light-poseidon), which recomputes both from the circuit input.
+        let escrow: BigUint = std::fs::read_to_string(batch.join("escrow_commitment.txt")).unwrap().trim().parse().unwrap();
+        assert_eq!(template::sale_commitment(&inp.input).expect("sale commitment"), inp.commitment, "saleCommitment: Rust against circomlibjs");
+        let funding = &inp.statement[template::signed_funding(0)..template::signed_funding(buyers)];
+        assert_eq!(template::escrow_commitment(&inp.input, funding).expect("escrow commitment"), escrow, "escrowCommitment: Rust against circomlibjs");
     }
+    inp
 }
 
 /// The public signals a proof of `statement` carries.
-fn public_of(statement: &[BigUint]) -> Vec<BigUint> {
+fn public_of(kind: template::Kind, statement: &[BigUint]) -> Vec<BigUint> {
     if HASHED {
-        vec![template::statement_hash(statement).expect("statement hash")]
+        vec![kind.statement_hash(statement).expect("statement hash")]
     } else {
         statement.to_vec()
     }
@@ -109,20 +138,23 @@ fn public_name(i: usize) -> String {
     }
 }
 
-/// The committee's payout template for `statement`; in M3 it also checks the hash preimage.
+/// The committee's payout template for `statement`; in M3 and M14 it also checks the hash preimage.
 fn template_for(inp: &Inputs, statement: &[BigUint]) -> template::Template {
     let built = if HASHED {
-        template::build_hashed(&public_of(statement)[0], statement, &inp.input, &inp.opening, &inp.commitment)
+        inp.kind.build_hashed(&public_of(inp.kind, statement)[0], statement, &inp.input, &inp.opening, &inp.commitment)
     } else {
         template::build(statement, &inp.input, &inp.opening, &inp.commitment)
     };
     built.expect("template")
 }
 
-fn tampered(signals: &[BigUint]) -> Vec<BigUint> {
-    let mut s = signals.to_vec();
-    s[template::refund(0)] += MOVED;
-    s[template::refund(1)] -= MOVED;
+/// The tampered statement: `Kind::moved_sats` of refund moved from buyer slot 1 to slot 0. Total
+/// conservation still holds, so the template accepts it; buyer slot 0's own equation
+/// funding = cost + fee + refund fails, so no valid proof exists for it.
+fn tampered(kind: template::Kind, statement: &[BigUint]) -> Vec<BigUint> {
+    let mut s = statement.to_vec();
+    s[kind.refund_index(0)] += kind.moved_sats();
+    s[kind.refund_index(1)] -= kind.moved_sats();
     s
 }
 
@@ -158,7 +190,7 @@ fn honest_assertions(inp: &Inputs) -> Assertions {
 }
 
 fn tampered_assertions(inp: &Inputs) -> Assertions {
-    cached_assertions(inp, "tampered", || chunked::any_assertions(&inp.proof, &public_of(&tampered(&inp.statement)), &inp.vk))
+    cached_assertions(inp, "tampered", || chunked::any_assertions(&inp.proof, &public_of(inp.kind, &tampered(inp.kind, &inp.statement)), &inp.vk))
 }
 
 fn plus_r_assertions(inp: &Inputs, signal: usize) -> Assertions {
@@ -308,7 +340,7 @@ fn selftest(inp: &Inputs, all_plus_r: bool) {
     report["commit_max_stack_items"] = json!(max_stack);
 
     // Binding leaves: fail on the honest commitment, succeed on any other value.
-    let s_prime = public_of(&tampered(&inp.statement));
+    let s_prime = public_of(inp.kind, &tampered(inp.kind, &inp.statement));
     let mut binding = vec![];
     for i in 0..NUM_PUBS {
         let leaf = chunked::binding_leaf(&pubkeys, i, &inp.signals[i]);
@@ -416,21 +448,21 @@ fn scenario(inp: &Inputs, name: &str) {
     let miner = rpc.new_address();
     let keys = Keys::new();
     let mut trace = Trace { rows: vec![] };
-    let mut facts = json!({"scenario": name, "num_pubs": NUM_PUBS, "statement_hashed": HASHED, "fee_rate_sat_per_vb": FEE_RATE,
+    let mut facts = json!({"scenario": name, "num_pubs": NUM_PUBS, "statement_hashed": HASHED, "statement_kind": format!("{:?}", inp.kind), "fee_rate_sat_per_vb": FEE_RATE,
         "t_challenge": T_CHALLENGE, "t_refund": T_REFUND, "bond_sats": BOND});
 
     let template_statement = match name {
-        "tampered" | "mismatch" => tampered(&inp.statement),
+        "tampered" | "mismatch" => tampered(inp.kind, &inp.statement),
         _ => inp.statement.clone(),
     };
-    let template_signals = public_of(&template_statement);
+    let template_signals = public_of(inp.kind, &template_statement);
     let tpl = template_for(inp, &template_statement);
     let template_outputs = outputs_of(&keys, &tpl);
     facts["template_outputs"] = json!(tpl.outputs.iter().map(|o| json!({"role": o.role, "payee": o.payee, "sats": o.amount})).collect::<Vec<_>>());
     facts["template_signals_differ_from_proof"] = json!((0..NUM_PUBS).filter(|i| template_signals[*i] != inp.signals[*i]).map(public_name).collect::<Vec<_>>());
-    facts["template_statement_differs_from_proof"] = json!((0..template::NUM_SIGNALS)
+    facts["template_statement_differs_from_proof"] = json!((0..inp.kind.statement_len())
         .filter(|i| template_statement[*i] != inp.statement[*i])
-        .map(template::signal_name)
+        .map(|i| inp.kind.value_name(i))
         .collect::<Vec<_>>());
 
     // Escrows, one per active buyer, and the operator's bond.

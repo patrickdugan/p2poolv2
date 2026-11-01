@@ -7,7 +7,8 @@
 # Expects prove-batch.sh and build.sh to have run with the same <work dir>, and bitcoind and
 # bitcoin-cli on PATH (or BITCOIN_BIN=<dir>). Results land in <work>/m1/*.json. The node listens
 # for RPC on ZKC_RPC_PORT (default 18743) and for P2P on the port above it. For M3 (setup dir
-# <work>/hashed, build.sh with ZKC_PUBS=1) the same script runs the hashed statement.
+# <work>/hashed, build.sh with ZKC_PUBS=1) the same script runs the hashed statement; for M14
+# (prove-batch.sh signed_tree_16x4, build.sh with ZKC_PUBS=1) it runs M11's signed-tree statement.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -22,6 +23,10 @@ export ZKC_RPC_URL="http://127.0.0.1:$PORT" ZKC_RPC_USER=zkc ZKC_RPC_PASS=zkc-m1
 CLI=("${BTC}bitcoin-cli" -regtest -datadir="$DATADIR" -rpcport="$PORT" -rpcuser=zkc -rpcpassword=zkc-m1-regtest)
 SETUP="$WORK/v1"
 [ -d "$WORK/hashed" ] && SETUP="$WORK/hashed"
+# M14: prove-batch.sh names the circuit in batch/circuit.txt; its setup dir is <work>/<circuit>.
+if [ -f "$WORK/batch/circuit.txt" ] && [ -d "$WORK/$(cat "$WORK/batch/circuit.txt")" ]; then
+  SETUP="$WORK/$(cat "$WORK/batch/circuit.txt")"
+fi
 
 "${BIN}/zkc-convert" "$SETUP/verification_key.json" "$SETUP/proof.json" "$SETUP/public.json" "$WORK/m1-convert-example.json"
 "${BIN}/zkc-convert" "$WORK/batch/verification_key.json" "$WORK/batch/proof.json" "$WORK/batch/public.json" "$WORK/m1-convert-batch.json"

@@ -1,0 +1,92 @@
+{
+ "buyer_slots": [
+  {
+   "buyer": "scale-buyer:0",
+   "escrow": "scale-escrow:0:0",
+   "refund_payee": "scale-refund:0"
+  },
+  {
+   "buyer": "scale-buyer:1",
+   "escrow": "scale-escrow:1:0",
+   "refund_payee": "scale-refund:1"
+  },
+  {
+   "buyer": "scale-buyer:2",
+   "escrow": "scale-escrow:2:0",
+   "refund_payee": "scale-refund:2"
+  },
+  {
+   "buyer": "scale-buyer:3",
+   "escrow": "scale-escrow:3:0",
+   "refund_payee": "scale-refund:3"
+  }
+ ],
+ "domain": "p2poolv2/proposed-share-clearing/v0",
+ "fee_payee": "operator-fee",
+ "sale_slots": [
+  {
+   "seller_payee": "scale-payout:0",
+   "share_outpoint": "scale-share:0"
+  },
+  {
+   "seller_payee": "scale-payout:1",
+   "share_outpoint": "scale-share:1"
+  },
+  {
+   "seller_payee": "scale-payout:2",
+   "share_outpoint": "scale-share:2"
+  },
+  {
+   "seller_payee": "scale-payout:3",
+   "share_outpoint": "scale-share:3"
+  },
+  {
+   "seller_payee": "scale-payout:4",
+   "share_outpoint": "scale-share:4"
+  },
+  {
+   "seller_payee": "scale-payout:5",
+   "share_outpoint": "scale-share:5"
+  },
+  {
+   "seller_payee": "scale-payout:6",
+   "share_outpoint": "scale-share:6"
+  },
+  {
+   "seller_payee": "scale-payout:7",
+   "share_outpoint": "scale-share:7"
+  },
+  {
+   "seller_payee": "scale-payout:8",
+   "share_outpoint": "scale-share:8"
+  },
+  {
+   "seller_payee": "scale-payout:9",
+   "share_outpoint": "scale-share:9"
+  },
+  {
+   "seller_payee": "scale-payout:10",
+   "share_outpoint": "scale-share:10"
+  },
+  {
+   "seller_payee": "scale-payout:11",
+   "share_outpoint": "scale-share:11"
+  },
+  {
+   "seller_payee": "scale-payout:12",
+   "share_outpoint": "scale-share:12"
+  },
+  {
+   "seller_payee": "scale-payout:13",
+   "share_outpoint": "scale-share:13"
+  },
+  {
+   "seller_payee": "scale-payout:14",
+   "share_outpoint": "scale-share:14"
+  },
+  {
+   "seller_payee": "scale-payout:15",
+   "share_outpoint": "scale-share:15"
+  }
+ ]
+}
