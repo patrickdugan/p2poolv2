@@ -1,6 +1,6 @@
 """Build the ownership tree from a real P2Poolv2 node store, dumped by `dump_store.sh`.
 
-    python3 real_store.py [--params production|sim] [--compare <dump dir>] <dump dir> <output dir>
+    python3 real_store.py [--params production|sim] [--compare <dump dir>] [--registry <file>] <dump dir> <output dir>
 
 `<dump dir>/shares.json` is `p2poolv2_cli --config <node config> --db-path <store> shares
 --num <n>` (the confirmed chain). `<dump dir>/share-<hash>.json` is `share --hash <hash> --full`
@@ -35,6 +35,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import gen_inputs  # noqa: E402
+import register  # noqa: E402
 import smt  # noqa: E402
 import utxo_set  # noqa: E402
 
@@ -95,21 +96,24 @@ class Chain:
         lowest = self.first + self.params.payout_depth - self.params.expiry_margin - 1
         return range(lowest, self.tip + 1)
 
-    def leaves(self, anchor: int) -> list[gen_inputs.Leaf]:
-        return [leaf_of(output) for output in self.model.snapshot(anchor)]
+    def leaves(self, anchor: int, registry: dict[str, int] | None = None) -> list[gen_inputs.Leaf]:
+        return [leaf_of(output, registry) for output in self.model.snapshot(anchor)]
 
 
-def leaf_of(output: utxo_set.Output) -> gen_inputs.Leaf:
-    return gen_inputs.Leaf(output.key, smt.owner_id(output.owner), output.units, output.root_height)
+def leaf_of(output: utxo_set.Output, registry: dict[str, int] | None = None) -> gen_inputs.Leaf:
+    return gen_inputs.Leaf(output.key, smt.owner_field(output.owner, registry), output.units, output.root_height)
 
 
 def tree_of(leaves: list[gen_inputs.Leaf]) -> smt.SparseMerkleTree:
     return smt.SparseMerkleTree.from_items(((leaf.key, leaf.value) for leaf in leaves), max_depth=gen_inputs.MAX_DEPTH)
 
 
-def compare(a: Chain, b: Chain) -> dict:
+def compare(a: Chain, b: Chain, registry: dict[str, int] | None = None) -> dict:
     shared = range(max(a.anchors().start, b.anchors().start), min(a.tip, b.tip) + 1)
-    differing = [anchor for anchor in shared if tree_of(a.leaves(anchor)).root != tree_of(b.leaves(anchor)).root]
+    differing = [
+        anchor for anchor in shared
+        if tree_of(a.leaves(anchor, registry)).root != tree_of(b.leaves(anchor, registry)).root
+    ]
     return {"anchors": [shared.start, shared.stop - 1], "count": len(shared), "differing": differing}
 
 
@@ -119,15 +123,22 @@ def main() -> None:
     parser.add_argument("out", type=Path)
     parser.add_argument("--params", choices=sorted(PARAMS), default="production")
     parser.add_argument("--compare", type=Path, help="a second node's dump")
+    parser.add_argument(
+        "--registry", type=Path,
+        help="a register.Registry JSON file: addresses with a registered order key hash get it as their owner",
+    )
     args = parser.parse_args()
     params = PARAMS[args.params]
+    registry = None
+    if args.registry:
+        registry = register.Registry.from_json(json.loads(args.registry.read_text())).owners()
 
     chain = Chain(args.dump, params)
     anchor = chain.tip
     if anchor not in chain.anchors():
         sys.exit(f"the dump replays heights {chain.first}..{chain.tip}, short of the tip's window")
     lower, upper = params.window(anchor)
-    leaves = chain.leaves(anchor)
+    leaves = chain.leaves(anchor, registry)
     if not leaves:
         sys.exit(f"the window {lower}..{upper} at anchor {anchor} holds no output")
     tree = tree_of(leaves)
@@ -150,7 +161,7 @@ def main() -> None:
         "proof_bytes_mean": round(statistics.mean(p.size_bytes() for p in proofs.values()), 1),
     }
     if args.compare:
-        stats["compare"] = compare(chain, Chain(args.compare, params))
+        stats["compare"] = compare(chain, Chain(args.compare, params), registry)
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "tree.json").write_text(json.dumps(stats, indent=2) + "\n")
 
@@ -159,10 +170,10 @@ def main() -> None:
     gen_inputs.write(args.out / "n1", "valid", gen_inputs.assemble(tree.root, [valid_row]))
     invalid = {"wrong_owner": dict(valid_row, sellerId=next(l.owner for l in leaves if l.owner != deepest.owner))}
     outputs = chain.model.outputs
-    tip_output = leaf_of(outputs[(chain.coinbases[chain.tip], 0)])
+    tip_output = leaf_of(outputs[(chain.coinbases[chain.tip], 0)], registry)
     invalid["immature"] = dict(valid_row, saleId=tip_output.key, sellerId=tip_output.owner, rootHeight=tip_output.root_height)
     if lower - 1 >= chain.first:
-        old = leaf_of(outputs[(chain.coinbases[lower - 1], 0)])
+        old = leaf_of(outputs[(chain.coinbases[lower - 1], 0)], registry)
         invalid["expired"] = dict(valid_row, saleId=old.key, sellerId=old.owner, rootHeight=old.root_height)
     for name, row in invalid.items():
         gen_inputs.write(args.out / "n1" / "invalid", name, gen_inputs.assemble(tree.root, [row]))
