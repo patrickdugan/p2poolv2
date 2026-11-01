@@ -1,0 +1,18 @@
+M9 run times (/usr/bin/time), 2026-11-01, Bitcoin Core v31.1.0 regtest, WSL2 Ubuntu 24.04.
+Other proving jobs shared the machine during these runs.
+
+spike (-blockmintxfee=0.0001, ZKC_VALIDATE=0):
+  scenario anchored-10 unchallenged: 64.47 s, 3447212 KiB max RSS
+  scenario anchored-10 challenged: 94.46 s, 3448236 KiB max RSS
+  scenario m2-10 unchallenged: 31.66 s, 3447008 KiB max RSS
+  scenario m2-10 challenged: 10.79 s, 3447852 KiB max RSS
+fee, run 1:
+  scenario anchored-2 unchallenged: 18.82 s, 3447904 KiB max RSS
+  scenario anchored-2 silent: 11.31 s, 3448080 KiB max RSS
+  scenario anchored-2 incomplete: 12.62 s, 3447780 KiB max RSS
+  scenario anchored-2 stall: 2.38 s, 11760 KiB max RSS
+fee, run 2:
+  [time] challenger validates: 515.4 s
+  scenario anchored-2 challenged: 975.83 s, 12505100 KiB max RSS
+  [time] challenger validates: 213.0 s
+  scenario anchored-2 tampered: 252.20 s, 12998788 KiB max RSS
