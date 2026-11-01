@@ -20,7 +20,7 @@ index 4c51780..3b1593f 100644
          let (alpha, bias) = if !t.is_zero() && !q.is_zero() {
              let alpha = (t.y - q.y) / (t.x - q.x);
 diff --git a/bitvm/src/chunk/api.rs b/bitvm/src/chunk/api.rs
-index 03efbfe..a49171d 100644
+index 03efbfe..4c91754 100644
 --- a/bitvm/src/chunk/api.rs
 +++ b/bitvm/src/chunk/api.rs
 @@ -18,9 +18,11 @@ use super::api_runtime_utils::{
@@ -37,7 +37,7 @@ index 03efbfe..a49171d 100644
  pub const VALIDATING_TAPS: usize = 1;
  pub const HASHING_TAPS: usize = NUM_HASH;
  pub const NUM_TAPS: usize = HASHING_TAPS + VALIDATING_TAPS;
-@@ -53,6 +55,33 @@ pub fn api_get_assertions_from_signature(signed_asserts: Signatures) -> Assertio
+@@ -53,6 +55,44 @@ pub fn api_get_assertions_from_signature(signed_asserts: Signatures) -> Assertio
      get_assertions_from_signature(signed_asserts)
  }
  
@@ -68,14 +68,25 @@ index 03efbfe..a49171d 100644
 +    crate::chunk::api_runtime_utils::disprove_witness_for_leaf(&segments, signed_asserts, leaf_index)
 +}
 +
++/// Witnesses (hint scripts) for every disprove leaf, in leaf order. One pass over the segments,
++/// where `api_disprove_witness_for_leaf` rebuilds them for each leaf.
++pub fn api_disprove_witnesses_for_all_leaves(
++    vk: &ark_groth16::VerifyingKey<Bn254>,
++    signed_asserts: Signatures,
++) -> Vec<Script> {
++    let asserts = get_assertions_from_signature(signed_asserts.clone());
++    let (_success, segments) = get_segments_from_assertion(asserts, vk.clone());
++    crate::chunk::api_runtime_utils::disprove_witnesses_for_all_leaves(&segments, signed_asserts)
++}
++
  pub mod type_conversion_utils {
      use super::*;
      use crate::chunk::api::Signatures;
 diff --git a/bitvm/src/chunk/api_runtime_utils.rs b/bitvm/src/chunk/api_runtime_utils.rs
-index f1d5088..a5e5d82 100644
+index f1d5088..2e3308b 100644
 --- a/bitvm/src/chunk/api_runtime_utils.rs
 +++ b/bitvm/src/chunk/api_runtime_utils.rs
-@@ -631,6 +631,57 @@ pub(crate) fn execute_script_from_signature(
+@@ -631,6 +631,65 @@ pub(crate) fn execute_script_from_signature(
      utils_execute_chunked_g16(mul_hints, bc_hints, segments, disprove_scripts)
  }
  
@@ -86,48 +97,56 @@ index f1d5088..a5e5d82 100644
 +    signed_assts: Signatures,
 +    leaf_index: usize,
 +) -> Option<Script> {
++    disprove_witnesses_for_all_leaves(segments, signed_assts)
++        .into_iter()
++        .nth(leaf_index)
++}
++
++/// zk_clearing M12: the hint script of every disprove leaf, in leaf order, from one pass over
++/// the segments.
++pub(crate) fn disprove_witnesses_for_all_leaves(
++    segments: &[Segment],
++    signed_assts: Signatures,
++) -> Vec<Script> {
 +    let mut sigs: Vec<SigData> = vec![];
 +    sigs.extend(signed_assts.0.iter().map(|f| SigData::Wots32(*f)));
 +    sigs.extend(signed_assts.1.iter().map(|f| SigData::Wots32(*f)));
 +    sigs.extend(signed_assts.2.iter().map(|f| SigData::Wots16(*f)));
 +    let mul_hints = utils_collect_mul_hints_per_segment(segments);
 +
-+    let mut tap_script_index = 0;
++    let mut witnesses = vec![];
 +    for (i, seg) in segments.iter().enumerate() {
 +        if seg.scr_type == ScriptType::NonDeterministic {
 +            continue;
 +        }
-+        if tap_script_index == leaf_index {
-+            let mut index_of_bitcommitted_msg: Vec<u32> =
-+                seg.parameter_ids.iter().rev().map(|(k, _)| *k).collect();
-+            if !seg.scr_type.is_final_script() {
-+                index_of_bitcommitted_msg.push(seg.id);
-+            }
-+            let mut sig_preimages = script! {};
-+            for index in index_of_bitcommitted_msg {
-+                let sig_preimage = match &sigs[index as usize] {
-+                    SigData::Wots16(signature) => Wots16::compact_signature_to_raw_witness(
-+                        &Wots16::signature_to_compact_signature(signature),
-+                    ),
-+                    SigData::Wots32(signature) => Wots32::compact_signature_to_raw_witness(
-+                        &Wots32::signature_to_compact_signature(signature),
-+                    ),
-+                };
-+                sig_preimages = script! {
-+                    {sig_preimages}
-+                    {sig_preimage}
-+                };
-+            }
-+            return Some(script! {
-+                for h in &mul_hints[i] {
-+                    {h.push()}
-+                }
-+                {sig_preimages}
-+            });
++        let mut index_of_bitcommitted_msg: Vec<u32> =
++            seg.parameter_ids.iter().rev().map(|(k, _)| *k).collect();
++        if !seg.scr_type.is_final_script() {
++            index_of_bitcommitted_msg.push(seg.id);
 +        }
-+        tap_script_index += 1;
++        let mut sig_preimages = script! {};
++        for index in index_of_bitcommitted_msg {
++            let sig_preimage = match &sigs[index as usize] {
++                SigData::Wots16(signature) => Wots16::compact_signature_to_raw_witness(
++                    &Wots16::signature_to_compact_signature(signature),
++                ),
++                SigData::Wots32(signature) => Wots32::compact_signature_to_raw_witness(
++                    &Wots32::signature_to_compact_signature(signature),
++                ),
++            };
++            sig_preimages = script! {
++                {sig_preimages}
++                {sig_preimage}
++            };
++        }
++        witnesses.push(script! {
++            for h in &mul_hints[i] {
++                {h.push()}
++            }
++            {sig_preimages}
++        });
 +    }
-+    None
++    witnesses
 +}
 +
  /// This is a duplicate of [`execute_script_from_signature`], just to analyze worst case scenarios

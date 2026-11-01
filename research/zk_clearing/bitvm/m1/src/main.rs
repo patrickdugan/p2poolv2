@@ -7,6 +7,7 @@
 //!
 //! Usage:
 //!   zkc-m1 prepare  <work>             disprove scripts and assertions (cached under <work>/m1)
+//!   zkc-m1 disproves <work>            M12: every disprove transaction's weight (<work>/m12)
 //!   zkc-m1 selftest <work>             script-level checks, no node
 //!   zkc-m1 scenario <work> <name>      honest | tampered | mismatch | plus-r | stall, on regtest
 //!
@@ -21,7 +22,8 @@ mod template;
 
 use ark_bn254::Bn254;
 use ark_groth16::{Proof, VerifyingKey};
-use bitcoin::{Address, OutPoint, ScriptBuf, Transaction, TxOut};
+use bitcoin::hashes::Hash;
+use bitcoin::{Address, OutPoint, ScriptBuf, Transaction, TxOut, Witness};
 use bitvm::chunk::api::{Assertions, NUM_PUBS, NUM_TAPS};
 use bitvm::signatures::{Wots, Wots32};
 use graph::*;
@@ -202,6 +204,80 @@ fn prepare(inp: &Inputs) {
             "sizes": sizes,
         }),
     );
+}
+
+/// M12: the weight of every disprove transaction, against relay policy and the block limit.
+/// Each BitVM leaf is spent with its witness for the honest assertion (a disproving witness has
+/// the same items, except that a zero Winternitz digit is an empty item) and a control block for
+/// A's tree. Two shapes are weighed: M1's (A alone, one P2TR output) and M2's (KB with its
+/// committee signature, then A; a burn output and a P2TR reward output).
+fn disproves(inp: &Inputs) {
+    let partial = partial(inp);
+    let secrets = chunked::secrets("leaf-size-survey");
+    let pubkeys = chunked::pubkeys(&secrets);
+    let full = timed("full tapscripts", || chunked::full_tapscripts(&pubkeys, &partial));
+    let sigs = chunked::sign(honest_assertions(inp), &secrets);
+    // A's tree holds the BitVM leaves, one binding leaf per public signal and the payout leaf.
+    let tree_leaves = NUM_TAPS + NUM_PUBS + 1;
+    let depth = (usize::BITS - (tree_leaves - 1).leading_zeros()) as usize;
+    let control = vec![0u8; 33 + 32 * depth];
+    let p2tr = ScriptBuf::from_bytes([vec![0x51, 0x20], vec![0u8; 32]].concat());
+    let burn = ScriptBuf::from_bytes(vec![0x6a]);
+    let input = |vout: u32, witness: Witness| bitcoin::TxIn {
+        previous_output: OutPoint { txid: bitcoin::Txid::all_zeros(), vout },
+        script_sig: ScriptBuf::new(),
+        sequence: bitcoin::Sequence::ENABLE_RBF_NO_LOCKTIME,
+        witness,
+    };
+    let spend = |inputs: Vec<bitcoin::TxIn>, outputs: Vec<TxOut>| Transaction {
+        version: bitcoin::transaction::Version::TWO,
+        lock_time: bitcoin::absolute::LockTime::ZERO,
+        input: inputs,
+        output: outputs,
+    };
+    let out = |script: &ScriptBuf| TxOut { value: bitcoin::Amount::from_sat(1_000), script_pubkey: script.clone() };
+
+    let witnesses = timed("witnesses for every leaf", || chunked::witnesses_for_all_leaves(&inp.vk, &sigs));
+    assert_eq!(witnesses.len(), full.len(), "one witness per disprove leaf");
+    let mut rows = vec![];
+    for (i, (leaf, items)) in full.iter().zip(&witnesses).enumerate() {
+        let mut stack = items.clone();
+        stack.push(leaf.to_bytes());
+        stack.push(control.clone());
+        let a_witness = Witness::from_slice(&stack);
+        let m1 = spend(vec![input(0, a_witness.clone())], vec![out(&p2tr)]);
+        let m2 = spend(vec![input(0, Witness::from_slice(&[vec![0u8; 65]])), input(1, a_witness)], vec![out(&burn), out(&p2tr)]);
+        rows.push(json!({
+            "leaf": i, "script_bytes": leaf.len(), "witness_items": items.len(),
+            "empty_items": items.iter().filter(|x| x.is_empty()).count(),
+            "witness_item_bytes": items.iter().map(Vec::len).sum::<usize>(),
+            "m1_weight": m1.weight().to_wu(), "m2_weight": m2.weight().to_wu(),
+        }));
+    }
+    let weight = |r: &Value| r["m2_weight"].as_u64().unwrap();
+    let heaviest = rows.iter().max_by_key(|r| weight(r)).unwrap().clone();
+    // Core's default template (-blockmaxweight 3,996,000) keeps 4,000 WU for the coinbase.
+    let over = |limit: u64| rows.iter().filter(|r| weight(r) > limit).count();
+    // What a chunk pays to hash an intermediate state, by its size in bytes: 2, 4, 6, 12 and
+    // 14 field elements. Splitting a chunk hashes the state at the split twice, once per side.
+    let blake3: serde_json::Map<String, Value> = [64usize, 128, 192, 384, 448]
+        .iter()
+        .map(|n| (n.to_string(), json!(bitvm::hash::blake3::blake3_compute_script(*n).compile().len())))
+        .collect();
+    let dir = inp.work.join("m12");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(format!("disproves-{NUM_PUBS}pub.json"));
+    let report = json!({
+        "num_pubs": NUM_PUBS, "disprove_leaves": NUM_TAPS, "a_tree_leaves": tree_leaves, "a_tree_depth": depth,
+        "blake3_script_bytes_by_message_bytes": blake3,
+        "heaviest_m2": heaviest,
+        "m2_over_400000_wu_standard_limit": over(400_000),
+        "m2_over_3992000_wu_default_template": over(3_992_000),
+        "m2_over_4000000_wu_block_limit": over(4_000_000),
+        "leaves": rows,
+    });
+    std::fs::write(&path, serde_json::to_string_pretty(&report).unwrap()).unwrap();
+    eprintln!("wrote {}", path.display());
 }
 
 /// Script-level checks that need no node.
@@ -573,6 +649,7 @@ fn main() {
     let inp = load(Path::new(&args[2]));
     match args[1].as_str() {
         "prepare" => prepare(&inp),
+        "disproves" => disproves(&inp),
         "selftest" => selftest(&inp, args.iter().any(|a| a == "--all-plus-r")),
         "scenario" => scenario(&inp, args.get(3).expect("scenario name")),
         other => panic!("unknown command {other}"),
