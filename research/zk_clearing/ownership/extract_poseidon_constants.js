@@ -1,6 +1,8 @@
-// Extract the Poseidon round constants and MDS matrices for t = 3 and t = 4
-// (two- and three-input hashes) from the pinned circomlibjs, which are the
+// Extract the Poseidon round constants and MDS matrices for t = 3, 4, 5 and 9
+// (two-, three-, four- and eight-input hashes) from the pinned circomlibjs, which are the
 // constants circomlib's Poseidon circuit uses. Writes poseidon_bn254.json.
+// t = 3 and 4 serve the sparse Merkle tree (M5); t = 5 and 9 serve the leaf (four fields) and
+// the radix-8 node of the dense window tree (window_tree.py).
 //
 // Usage: node extract_poseidon_constants.js <node_modules dir> <output json>
 const fs = require("fs");
@@ -20,7 +22,7 @@ const result = {
   nRoundsF: N_ROUNDS_F,
   params: {},
 };
-for (const t of [3, 4]) {
+for (const t of [3, 4, 5, 9]) {
   result.params[t] = {
     nRoundsP: N_ROUNDS_P[t - 2],
     C: constants.C[t - 2].map(toDec),

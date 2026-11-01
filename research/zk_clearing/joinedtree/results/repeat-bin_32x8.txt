@@ -1,0 +1,6 @@
+witness (wasm) x3 and two more proves on the same zkey, after the run:
+witness 2.79 s 229560 KiB
+witness 2.98 s 291116 KiB
+witness 3.23 s 290940 KiB
+prove 27.00 s 4887096 KiB
+prove 16.86 s 5044628 KiB

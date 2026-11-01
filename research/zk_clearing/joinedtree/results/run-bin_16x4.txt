@@ -1,0 +1,64 @@
+circuit: owned_tree_bin_16x4
+git: unknown (uncommitted changes)
+circom: circom compiler 2.2.2
+node: v22.12.0  snarkjs: 0.7.5
+setup: INSECURE deterministic beacon, power 20, beacon 5ea82d8c6d749f711f35507f7adb4b2a94fafc771a9cd425d47bb193b2cf6466
+
+compile                         27.43 s   1647264 KiB max RSS
+ snarkJS: # of Wires: 183859
+ snarkJS: # of Constraints: 183893
+ snarkJS: # of Private Inputs: 912
+ snarkJS: # of Public Inputs: 1
+ snarkJS: # of Outputs: 0
+field check: witness.BN254_FR matches the circuit prime
+
+invalid fixtures (witness calculator must reject):
+  rejected bad_order_signature: Error in template ForceEqualIfEnabled_322 line: 56
+  rejected duplicate_output_two_slots: Error in template Num2Bits_482 line: 38
+  rejected hole_in_active_slots: Error in template WindowOrder_488 line: 146
+  rejected member_leaf_at_wrong_position: Error in template WindowSale_487 line: 136
+  rejected output_expired: Error in template WindowSale_487 line: 136
+  rejected output_immature: Error in template WindowSale_487 line: 136
+  rejected output_spent_before_anchor: Error in template WindowSale_487 line: 136
+  rejected position_disagrees_with_path: Error in template WindowLevel_486 line: 82
+  rejected signer_is_another_registered_seller: Error in template WindowSale_487 line: 136
+  rejected signer_not_registered_owner: Error in template WindowSale_487 line: 136
+  rejected slots_out_of_position_order: Error in template Num2Bits_482 line: 38
+  rejected statement_hash_omits_root: Error in template SignedClearingTree_481 line: 355
+  rejected unregistered_owner_output: Error in template WindowSale_487 line: 136
+  rejected wrong_window_root: Error in template WindowSale_487 line: 136
+phase 1: reused /root/zkc-m6/pot20_final.ptau
+groth16 setup + beacon          89.17 s   2206100 KiB max RSS
+
+proving key: 128061798 bytes
+verifying key: 2930 bytes JSON, sha256 3f5a4e3259ff1028e9f354ac42ef3ea6d623c3a7e3b1b5db31b4f29cf77a99e0
+groth16 prove                   11.45 s   3335880 KiB max RSS
+groth16 verify (CLI)             0.88 s    306080 KiB max RSS
+proof: 2 G1 + 1 G2 = 256 bytes uncompressed; public signals: 1
+valid proof: verified
+re-split sale list: proves different public signals
+statementHash (circomlibjs, honest statement): 14228994957842437325285184818831647284748572049984555915255259316182450037804
+valid proof: statementHash matches circomlibjs
+re-split proof: statementHash differs, so a verifier holding the honest statement rejects it
+tampered public signal: rejected
+public signal + r: rejected by snarkjs
+forged witness: R1CS check rejects it (aborting checking process at constraint 180121)
+forged witness proof: produced, rejected by the verifier
+
+checks specific to the join:
+  padded batch: witness satisfies the R1CS
+  statement has 21 values and its last is the tree's root: 15931613732183430944609048788323128199156187765610645571814645564167521385231
+  signer_not_registered_owner: refused in WindowSale (WindowSale < WindowSales < OwnedSignedTreeWindow)
+  signer_is_another_registered_seller: refused in WindowSale (WindowSale < WindowSales < OwnedSignedTreeWindow)
+  unregistered_owner_output: refused in WindowSale (WindowSale < WindowSales < OwnedSignedTreeWindow)
+  output_spent_before_anchor: refused in WindowSale (WindowSale < WindowSales < OwnedSignedTreeWindow)
+  output_expired: refused in WindowSale (WindowSale < WindowSales < OwnedSignedTreeWindow)
+  output_immature: refused in WindowSale (WindowSale < WindowSales < OwnedSignedTreeWindow)
+  wrong_window_root: refused in WindowSale (WindowSale < WindowSales < OwnedSignedTreeWindow)
+  bad_order_signature: refused in EdDSAPoseidonVerifier (ForceEqualIfEnabled < EdDSAPoseidonVerifier < SignedOrder < SignedClearingTree < OwnedSignedTreeWindow)
+  statement_hash_omits_root: refused in SignedClearingTree (SignedClearingTree < OwnedSignedTreeWindow)
+  position_disagrees_with_path: refused in WindowLevel (WindowLevel < WindowSale < WindowSales < OwnedSignedTreeWindow)
+  member_leaf_at_wrong_position: refused in WindowSale (WindowSale < WindowSales < OwnedSignedTreeWindow)
+  duplicate_output_two_slots: refused in WindowOrder (Num2Bits < WindowOrder < WindowSales < OwnedSignedTreeWindow)
+  slots_out_of_position_order: refused in WindowOrder (Num2Bits < WindowOrder < WindowSales < OwnedSignedTreeWindow)
+  hole_in_active_slots: refused in WindowOrder (WindowOrder < WindowSales < OwnedSignedTreeWindow)

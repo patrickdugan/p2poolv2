@@ -1,0 +1,12 @@
+M11 signed_tree_16x4 (circom 2.2.2 --r1cs --sym --O2): branch zk-clearing-m11 (fd8823c2) against this change
+d58a07169a8c12d36cf4fe19b8942dca31ede155583337b5179e807795e820d7  branch/signed_tree_16x4.r1cs
+8aab917589a3da9096d60ee2b87578377e3ef3f044d5d6f75061e2aaf9d0c5be  branch/signed_tree_16x4.sym
+d58a07169a8c12d36cf4fe19b8942dca31ede155583337b5179e807795e820d7  mine/signed_tree_16x4.r1cs
+8aab917589a3da9096d60ee2b87578377e3ef3f044d5d6f75061e2aaf9d0c5be  mine/signed_tree_16x4.sym
+r1cs identical
+sym identical
+and 64x8, against a copy of c4122f50 before the change:
+9ff782a07c6f508f6170e41c02760709d7027a7102c2ae4be9f407a305505fc9  before/out/signed_tree_64x8.r1cs
+7d2c59603965ab3c20c4108337e91485e6f8cb36fb9ff1776dbad14781bfd788  before/out/signed_tree_64x8.sym
+9ff782a07c6f508f6170e41c02760709d7027a7102c2ae4be9f407a305505fc9  after/signed_tree_64x8.r1cs
+7d2c59603965ab3c20c4108337e91485e6f8cb36fb9ff1776dbad14781bfd788  after/signed_tree_64x8.sym

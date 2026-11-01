@@ -1,0 +1,14 @@
+== window_sale_n1 on the 119,953-leaf tree
+[INFO]  snarkJS: WITNESS CHECKING FINISHED SUCCESSFULLY
+rejected position_off_by_one.json: Error in template WindowLevel_148 line: 82
+rejected wrong_owner.json: Error in template WindowSale_149 line: 136
+setup 12.25 s 426168 KiB
+prove 0.78 s 528140 KiB
+[INFO]  snarkJS: OK!
+verify 0.42 s 304348 KiB
+public signals: ["7247940468345899894523218850890561141831771460354911542081313138619255782166","1","7246251273691723357781703612401426465897298324057853054520648515681612940462","5703306327572890195386507543925299387099212028794719765662375541439806635801"]
+tree root from the build: 7247940468345899894523218850890561141831771460354911542081313138619255782166
+== window_sale_r8_n1 on the 119,953-leaf tree
+[INFO]  snarkJS: WITNESS CHECKING FINISHED SUCCESSFULLY
+rejected position_off_by_one.json: Error in template WindowLevel_154 line: 82
+rejected wrong_owner.json: Error in template WindowSale_155 line: 136

@@ -9,8 +9,12 @@ serves every size. All prove times are snarkjs; rapidsnark was not built here.
 
 ## The statement
 
-`circuits/clearing_tree_signed.circom` defines `SignedClearingTree(saleSlots, buyerSlots, depth)`.
-It puts M4's signed terms on M6's tree behind M3's single public input.
+`circuits/clearing_tree_signed.circom` defines `SignedClearingTree(saleSlots, buyerSlots, depth, extraValues)`.
+It puts M4's signed terms on M6's tree behind M3's single public input. `extraValues` was added
+by M15 ([joinedtree/JOINED_TREE.md](../joinedtree/JOINED_TREE.md)): that many private values are
+appended to the hashed statement. The three circuits below pass 0, which declares no signal, and
+their compiled R1CS and symbol files at 16×4 and 64×8 are byte-identical before and after the
+change (sha256 `d58a0716…` / `8aab9175…` and `9ff782a0…` / `7d2c5960…`).
 
 **Public:** `statementHash` and nothing else. Every other value is private.
 

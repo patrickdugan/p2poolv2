@@ -477,7 +477,10 @@ proof is as fresh as the root it names.
 
 ## 6. Where the cost goes, and what trims it
 
-All *est.* except the compiled Poseidon sizes. None is built.
+All *est.* except the compiled Poseidon sizes. None is built here. M15 later built a different
+trim, a dense tree over the window's outputs instead of a sparse one
+([joinedtree/JOINED_TREE.md](../joinedtree/JOINED_TREE.md), `window_tree.py`), at 4,417
+constraints per proof with binary nodes and 2,775 with eight-way nodes.
 
 | Change | Per proof | 16 proofs | Cost |
 |---|---|---|---|

@@ -6,9 +6,14 @@ pragma circom 2.1.8;
 // The proof's only public signal is statementHash. Everything else is private.
 //
 //   statement     = [saleCommitment, escrowCommitment, batchHeight, totalPayout,
-//                    funding[0..B-1], feeBudget[0..B-1], refund[0..B-1], buyerId[0..B-1]]
-//                   (4 + 4B values, B = buyerSlots)
+//                    funding[0..B-1], feeBudget[0..B-1], refund[0..B-1], buyerId[0..B-1],
+//                    extra[0..E-1]]
+//                   (4 + 4B + E values, B = buyerSlots, E = extraValues)
 //   statementHash = PoseidonChunked(statement)
+//
+// extra[] is for circuits that wrap this one and bind one more private value to the same hash
+// (the joined circuits of joinedtree/ put the ownership root there). With extraValues = 0 the
+// array has no signals and the circuit is the one M11 measured.
 //
 // PoseidonChunked hashes up to 12 values with one Poseidon call. Longer lists are cut into
 // chunks of 12 (the last one may be shorter), each chunk is hashed, and the chunk digests are
@@ -197,7 +202,7 @@ template SignedEscrow() {
     notExpired.limit <== active * escrowExpiry;
 }
 
-template SignedClearingTree(saleSlots, buyerSlots, depth) {
+template SignedClearingTree(saleSlots, buyerSlots, depth, extraValues) {
     assert(saleSlots == (1 << depth));
 
     // The statement's values.
@@ -210,6 +215,9 @@ template SignedClearingTree(saleSlots, buyerSlots, depth) {
 
     // The one public signal.
     signal input statementHash;
+
+    // Values appended to the hashed statement (none in M11's own circuits).
+    signal input extra[extraValues];
 
     // v1 witness.
     signal input price[saleSlots];
@@ -329,7 +337,7 @@ template SignedClearingTree(saleSlots, buyerSlots, depth) {
     }
 
     // ---- the one public input ----
-    var statementLength = 4 + 4 * buyerSlots;
+    var statementLength = 4 + 4 * buyerSlots + extraValues;
     component statement = PoseidonChunked(statementLength);
     statement.in[0] <== tree.root;
     statement.in[1] <== escrowRoot.out;
@@ -340,6 +348,9 @@ template SignedClearingTree(saleSlots, buyerSlots, depth) {
         statement.in[4 + buyerSlots + buyer] <== feeBudget[buyer];
         statement.in[4 + 2 * buyerSlots + buyer] <== refund[buyer];
         statement.in[4 + 3 * buyerSlots + buyer] <== buyerId[buyer];
+    }
+    for (var index = 0; index < extraValues; index++) {
+        statement.in[4 + 4 * buyerSlots + index] <== extra[index];
     }
     statementHash === statement.out;
 }
