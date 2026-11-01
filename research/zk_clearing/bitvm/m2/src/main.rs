@@ -904,7 +904,9 @@ fn scenario(inp: &Inputs, run: &Run, name: &str) {
         trace.record(&rpc, "kickoff", &s.kickoff.tx, if run.graph.anchored() { "bond -> KC + KA + KB + anchor" } else { "bond -> KC + KA + KB" }).expect("kickoff standard");
         trace.mine(&rpc, &miner, &[("kickoff", &s.kickoff.tx)]);
     }
-    let h_k = rpc.height();
+    // Heights are the blocks that mined the transactions: a live chain can be several blocks
+    // past them by the time the run sees the confirmation.
+    let h_k = height_of(&rpc, &s.kickoff.tx);
     if run.live {
         facts["kickoff_blocks_after_funding"] = json!(h_k - h_e);
     } else {
@@ -935,7 +937,7 @@ fn scenario(inp: &Inputs, run: &Run, name: &str) {
                 let mined = rpc.transaction(&s.payout_unchallenged.compute_txid());
                 assert_eq!(&mined.output[..template_outputs.len()], &template_outputs[..], "payout outputs differ from the template");
                 facts["payout_outputs_equal_template"] = json!(true);
-                facts["payout_height_minus_kickoff_height"] = json!(rpc.height() - h_k);
+                facts["payout_height_minus_kickoff_height"] = json!(height_of(&rpc, &mined) - h_k);
                 facts["operator_back_sats"] = json!(mined.output.last().unwrap().value.to_sat());
                 facts["negative_challenge_after_payout"] = trace.reject(&rpc, &miner, "challenge(after payout)", &challenge, "KC already spent");
                 // A spent input refuses the timeout at any height; regtest checks it at T_assert.
@@ -952,7 +954,7 @@ fn scenario(inp: &Inputs, run: &Run, name: &str) {
             }
             trace.record(&rpc, "challenge", &challenge, "KC (presigned SINGLE|ANYONECANPAY) + challenger's coin").expect("challenge standard");
             trace.mine(&rpc, &miner, &[("challenge", &challenge)]);
-            let h_c = rpc.height();
+            let h_c = height_of(&rpc, &challenge);
             facts["challenge_height_minus_kickoff_height"] = json!(h_c - h_k);
             if name == "challenged" {
                 assert_eq!(h_c, h_k + u64::from(T_CHALLENGE) - 1);
@@ -992,7 +994,7 @@ fn scenario(inp: &Inputs, run: &Run, name: &str) {
                 trace.record(&rpc, "assert_final", &s.chain.assert_final, "KA + every D_k -> A").expect("assert_final standard");
                 trace.mine(&rpc, &miner, &[("assert_final", &s.chain.assert_final)]);
             }
-            let h_a = rpc.height();
+            let h_a = height_of(&rpc, &s.chain.assert_final);
             facts["a_height_minus_kickoff_height"] = json!(h_a - h_k);
             facts["blocks_to_spare_before_timeout"] = json!(h_k + u64::from(T_ASSERT) - 1 - h_a);
 
@@ -1130,7 +1132,7 @@ fn spike_payout_unchallenged(
         let mined = rpc.transaction(&payout.compute_txid());
         assert_eq!(&mined.output[..template_outputs.len()], template_outputs, "payout outputs differ from the template");
         facts["payout_outputs_equal_template"] = json!(true);
-        facts["payout_height_minus_kickoff_height"] = json!(rpc.height() - h_k);
+        facts["payout_height_minus_kickoff_height"] = json!(height_of(rpc, &mined) - h_k);
         facts["operator_back_sats"] = json!(mined.output.last().unwrap().value.to_sat());
         return true;
     }
