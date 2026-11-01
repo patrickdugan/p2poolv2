@@ -229,11 +229,9 @@ for 1.9 times the constraints), which is why the memory is a range.
 
 - **rapidsnark.** Not built here. All prove times are snarkjs.
 - **1,024 slots.** Estimated only (above). Its 6 M constraints do not compile or prove in this VM.
-- **The Rust side.** `bitvm/m1/src/template.rs` recomputes M3's `Poseidon2(Poseidon9, Poseidon9)`
-  with light-poseidon. It was not changed to `PoseidonChunked`. The new hash uses calls of at most
-  12 inputs, so light-poseidon can compute it with circomlib's parameters, but that is not shown by
-  a run.
-- **BitVM.** No BitVM scenario was run on these proofs (see Reading).
+- **The Rust side and BitVM** were not run here. M14 ([../bitvm/M14.md](../bitvm/M14.md)) ran
+  both afterwards: `PoseidonChunked` in light-poseidon matches circomlibjs, and the 16×4 proof
+  settles through BitVM on regtest as M3's did.
 - **M4's open items stay open.** An order key is not bound to the seller's sharechain
   `miner_address` (M5's ownership tree is the way to do that, roadmap item 3). `escrowId` and
   `refundScriptId` are field encodings of labels, and the Bitcoin transaction graph must spend

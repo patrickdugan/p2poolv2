@@ -1,6 +1,6 @@
 # Roadmap: proof-backed share clearing
 
-Written 2026-11-01 after M1; M2 to M12 were executed the same day. This file is the status.
+Written 2026-11-01 after M1; M2 to M15 were executed the same day. This file is the status.
 
 **The question.** Can batched, proof-backed clearing of share sales between miners and market
 makers beat P2Poolv2's bilateral atomic swaps on cost or on guarantees?
@@ -35,6 +35,9 @@ on-chain fees are low.
 | M10 | Ownership joined to signed orders. A share address's key registers a BabyJubjub order key with BIP340; the tree stores the key's hash as the owner; one circuit (291,792 constraints) proves M4's signatures and M5's membership for the same seller. Proves in 11.8 s; a seller selling with an unregistered, rotated-out or someone else's key is refused in the membership check | [joined/JOINED.md](joined/JOINED.md) |
 | M11 | M4's signatures on M6's tree behind one hashed public input, at 16, 64 and 128 slots. 128 sales: 760,801 constraints, prove 19–50 s and 6.8 GiB in snarkjs. Signatures are 87% of the circuit, 4,852 constraints per sale. 1,024 sales: about 5.76 M constraints, phase-1 power 23, 30–51 GiB to prove, *est.* | [signedtree/SIGNED_TREE.md](signedtree/SIGNED_TREE.md) |
 | M12 | Every disprove weighed: 430 of 432 are over the relay limit, none is over a default block template (the heaviest is 3,960,303 WU, 31,697 under it). BLAKE3 in Script costs 232 kB per hash of BitVM's Fp12 state, so pairing leaves cannot be cut under the relay limit. The disprove window has to come from the hashrate that accepts non-standard transactions: 135 blocks at 5%, 688 at 1% (ε = 10⁻³) | [bitvm/M12.md](bitvm/M12.md) |
+| M13 | Rising fees and batchHeight. A market rising from 10 to 20 sat/vB mid-assert: the operator replaced its CPFP child by RBF and A still landed with 3 blocks to spare; above MAX_FEE_RATE it paid 8.48 M sats for an assert the challenge priced at 4.25 M, and kept its bond. batchHeight is bound from both sides on chain: the kickoff's lock time is batchHeight, and the kickoff spends a deadline connector that anyone may sweep 4 blocks later, after which the kickoff can never confirm. Escrows refund through CLTV at an absolute expiry | [bitvm/M13.md](bitvm/M13.md) |
+| M14 | M11's signed-tree proof through BitVM: the payout template recomputes the chunked statement hash in Rust, opens both commitments and checks every signed payout, refund and escrow id. 359 of 364 disprove leaves are byte-identical to M3's (the other 5 embed the verifying key's IC); assert chain 336,520 vB; honest, tampered, mismatch, plus-r and stall behave as in M3 | [bitvm/M14.md](bitvm/M14.md) |
+| M15 | A dense window tree for ownership: a Poseidon tree over the anchor's live outputs in key order, with positions rising across sale slots so one output cannot fill two. 4,417 constraints per sale (binary) or 2,775 (eight-way) against M5's 11,438. Joined to M11's tree: 64×8 at 583,110 constraints, 34 s to prove. 1,024 sales: 8.6–10.3 M constraints instead of 17.5 M, phase-1 power 24, *est.* | [joinedtree/JOINED_TREE.md](joinedtree/JOINED_TREE.md) |
 
 What M1 taught:
 
@@ -103,23 +106,34 @@ What M9 to M12 taught:
   set from the hashrate share that accepts non-standard transactions. The heaviest disprove
   fills 99% of a block, so a 1% larger leaf would not fit a default template.
 
+What M13 to M15 taught:
+
+- **A lower bound on batchHeight protects nothing; the upper bound is what an expiry needs (M13).**
+  Bitcoin cannot invalidate a transaction after a height, but a transaction can depend on an
+  output that anyone may spend after that height. The deadline connector is that output.
+- **RBF on keyed anchors needs nothing special (M13).** Only the operator can spend them, so its
+  own children are the only conflicts.
+- **BitVM's side does not care what the circuit proves (M14).** With one public input, a new
+  circuit changes the five MSM-related leaves and nothing else. What grows is the payout, with
+  the batch.
+- **A dense tree halves the joined circuit (M15),** at the price of trusting watchers' rebuild
+  for one value per outpoint. A sparse tree enforces that by construction.
+
 ## Remaining work
 
 Done since the first version of this list: anchors in M2's graph (M9), the signed tree at scale
-(M11), M5 joined to M4 (M10), and the disprove route (M12).
+(M11), M5 joined to M4 (M10), the disprove route (M12), rising fees and batchHeight (M13), BitVM
+on M11's statement (M14) and the joined statement at scale (M15).
 
 Engineering that can be done next without anyone else:
 
-1. **The joined statement at scale.** M10's membership on M11's tree costs about 17,000
-   constraints per sale (5,600 for the signed tree, 11,400 for the membership), so 1,024 sales
-   come to about 17.5 M constraints and phase-1 power 25, *est.* A cheaper membership proof is the next step: a shallower tree for the live window
-   (M5 section 6), or one root per seller.
-2. **BitVM on M11's statement.** Port M11's chunked Poseidon to the Rust template, and rerun
-   M3's scenarios with a signed-tree proof.
-3. **Bind `batchHeight` to the chain.** For example a CLTV on the kickoff, so the expiry checks of
-   M4 and M11 refer to the real height.
-4. **Rising fees during an assert.** Replace the bump children by RBF as the market climbs. M9
-   ran a constant spike only.
+1. **Expiries in the circuit.** Prove `batchHeight + 4 <= orderExpiry` (M13's deadline offset)
+   instead of `batchHeight <= orderExpiry`. Use each buyer's signed `escrowExpiry` as its escrow's
+   CLTV height in the graph.
+2. **One statement for everything.** M15's joined circuit through M14's BitVM pipeline on M13's
+   bound, anchored graph, so one regtest run covers signatures, ownership, fees and heights.
+3. **Under power 23.** M15's eight-way tree misses 2^23 by 2.7% at 1,024 sales. A sale leaf or
+   chunked hash a few percent cheaper, or 960 slots, fits a public power-23 ceremony file.
 
 Waiting on Patrick or third parties (details in M8):
 
@@ -138,8 +152,8 @@ Waiting on Patrick or third parties (details in M8):
 ## Branches
 
 All on `patrickdugan/p2poolv2`, each off `zk-clearing-roadmap` (6778e29e) unless noted.
-`zk-clearing-integration` merges them all. M9 to M12 branch off `zk-clearing-integration`
-(9fc8dc96).
+`zk-clearing-integration` merges them all, and `main` is fast-forwarded to it. M9 to M12 branch
+off `zk-clearing-integration` at 9fc8dc96, M13 to M15 at c4122f50.
 
 | Milestone | Branch |
 |---|---|
@@ -153,3 +167,6 @@ All on `patrickdugan/p2poolv2`, each off `zk-clearing-roadmap` (6778e29e) unless
 | M9 and M12 | `zk-clearing-m9` |
 | M10 | `zk-clearing-m10` |
 | M11 | `zk-clearing-m11` |
+| M13 | `zk-clearing-m13` |
+| M14 | `zk-clearing-m14` |
+| M15 | `zk-clearing-m15` |
