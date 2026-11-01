@@ -1,0 +1,2 @@
+Bitcoin Core daemon version v31.1.0 bitcoind
+policy: -blockmintxfee=0.00010000

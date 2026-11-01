@@ -1,0 +1,4 @@
+[time] partial disprove scripts: 4.2 s
+[time] full tapscripts: 8.0 s
+[time] witnesses for every leaf: 232.7 s
+disproves: 253.25 s, 12988800 KiB max RSS

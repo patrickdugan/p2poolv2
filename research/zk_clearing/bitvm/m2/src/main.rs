@@ -7,8 +7,16 @@
 //!   zkc-m2 scenario <work> <name>   unchallenged | challenged | tampered | silent | incomplete | stall
 //!
 //! <work> is the directory prove-batch.sh filled (<work>/batch). Disprove scripts and
-//! assertions come from the cache `zkc-m1 prepare` wrote under <work>/m1; results go to
-//! <work>/m2. The node is reached through ZKC_RPC_URL, ZKC_RPC_USER, ZKC_RPC_PASS and ZKC_WALLET.
+//! assertions come from the cache `zkc-m1 prepare` wrote under <work>/m1. The node is reached
+//! through ZKC_RPC_URL, ZKC_RPC_USER, ZKC_RPC_PASS and ZKC_WALLET.
+//!
+//! M9 adds, through the environment:
+//!   ZKC_GRAPH=m2|anchored     the graph (default m2, M2 as run; graph.rs has the anchored one)
+//!   ZKC_MARKET_FEE_RATE=<n>   sat/vB paid by transactions signed when posted (default FEE_RATE).
+//!                             Above FEE_RATE it is a fee spike: run the node with -blockmintxfee
+//!                             at the same rate, and only `unchallenged` and `challenged` apply
+//!   ZKC_VALIDATE=0            skip the challenger's BitVM validation in a `challenged` spike
+//! Results go to <work>/m2 for the M2 graph at FEE_RATE, else to <work>/m9/<graph>-<rate>.
 
 #[allow(dead_code)]
 #[path = "../../m1/src/chunked.rs"]
@@ -27,6 +35,7 @@ mod graph;
 use ark_bn254::Bn254;
 use ark_groth16::{Proof, VerifyingKey};
 use bitcoin::{Address, ScriptBuf, Sequence, Transaction, TxOut, Witness};
+use bitcoin::transaction::Version;
 use bitvm::chunk::api::{Assertions, NUM_PUBS, NUM_TAPS};
 use bitvm::signatures::{Wots, Wots32};
 use graph::*;
@@ -42,6 +51,45 @@ const COMMIT_MAX_ITEMS: usize = 900;
 const MOVED: u64 = 50_000;
 /// The challenger's coin: the challenge amount plus room for its fee.
 const CHALLENGER_COIN_EXTRA: u64 = 20_000;
+/// The operator's coins for CPFP children in a spike: one per anchored transaction it may bump.
+const BUMP_COINS: usize = 9;
+/// Core's default incremental relay fee, 0.1 sat/vB: what a replacement must add per vbyte.
+const INCREMENTAL_RELAY_SAT_PER_KVB: u64 = 100;
+/// TRUC's cap on a child of an unconfirmed version 3 transaction.
+const TRUC_CHILD_MAX_VSIZE: usize = 1000;
+
+/// How a run is configured (module docs).
+struct Run {
+    graph: Graph,
+    market: u64,
+    validate: bool,
+}
+
+impl Run {
+    fn from_env() -> Run {
+        let graph = match std::env::var("ZKC_GRAPH").as_deref() {
+            Ok("anchored") => Graph::Anchored,
+            Ok("m2") | Err(_) => Graph::M2,
+            Ok(other) => panic!("ZKC_GRAPH must be m2 or anchored, not {other}"),
+        };
+        let market = std::env::var("ZKC_MARKET_FEE_RATE").map(|v| v.parse().expect("ZKC_MARKET_FEE_RATE")).unwrap_or(FEE_RATE);
+        assert!(market >= FEE_RATE, "the market rate must be at least the presigned FEE_RATE");
+        let validate = std::env::var("ZKC_VALIDATE").as_deref() != Ok("0");
+        Run { graph, market, validate }
+    }
+
+    fn spike(&self) -> bool {
+        self.market > FEE_RATE
+    }
+
+    fn results_dir(&self, work: &Path) -> PathBuf {
+        if self.graph == Graph::M2 && !self.spike() {
+            work.join("m2")
+        } else {
+            work.join("m9").join(format!("{}-{}", self.graph.name(), self.market))
+        }
+    }
+}
 
 struct Inputs {
     work: PathBuf,
@@ -104,8 +152,8 @@ fn assertions(inp: &Inputs, which: &str) -> Assertions {
     chunked::assertions_from_json(&read_json(&m1_cache(inp, &format!("assertions-{which}.json"))))
 }
 
-fn write_result(inp: &Inputs, name: &str, value: &Value) {
-    let dir = inp.work.join("m2");
+fn write_result(inp: &Inputs, run: &Run, name: &str, value: &Value) {
+    let dir = run.results_dir(&inp.work);
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join(format!("{name}.json"));
     std::fs::write(&path, serde_json::to_string_pretty(value).unwrap()).unwrap();
@@ -170,10 +218,105 @@ impl Trace {
         row
     }
 
+    /// Sends `t` (its parents confirmed or already in the mempool) and records the node's verdict.
+    fn send(&mut self, rpc: &rpc::Rpc, name: &str, t: &Transaction, note: &str) -> Result<(), String> {
+        let verdict = send(rpc, t);
+        let row = json!({
+            "tx": name, "txid": t.compute_txid().to_string(), "vbytes": t.vsize(), "weight": t.weight().to_wu(),
+            "inputs": t.input.len(), "outputs": t.output.len(), "version": t.version.0,
+            "mempool_now": match &verdict { Ok(()) => "accepted".to_string(), Err(e) => e.clone() },
+            "note": note,
+        });
+        eprintln!("  {name:<28} {:>9} vB  {}", t.vsize(), row["mempool_now"]);
+        self.rows.push(row);
+        verdict
+    }
+
+    /// Adds `key: value` to the latest row for `name`.
+    fn annotate(&mut self, name: &str, key: &str, value: Value) {
+        let row = self.rows.iter_mut().rev().find(|r| r["tx"] == name).unwrap_or_else(|| panic!("no row for {name}"));
+        row[key] = value;
+    }
+
+    /// Mines one block from the mempool, which must hold every one of `named`.
+    fn mine_mempool(&mut self, rpc: &rpc::Rpc, miner: &Address, named: &[(&str, &Transaction)]) {
+        rpc.mine(1, miner);
+        self.mark_mined(rpc, named, "mempool");
+    }
+
     /// Total vbytes of the transactions this trace saw mined.
     fn mined_vbytes(&self) -> u64 {
         self.rows.iter().filter(|r| r.get("mined_height").is_some()).map(|r| r["vbytes"].as_u64().unwrap()).sum()
     }
+}
+
+/// Whether the node's next block template includes `t`: what a miner takes at the market rate
+/// (-blockmintxfee), without mining a block. Core keeps serving its last template for a few
+/// seconds after the mempool changes. Every call here follows a change, so it waits for a
+/// template whose `longpollid` (tip and mempool update count) differs from the previous one.
+fn in_template(rpc: &rpc::Rpc, t: &Transaction) -> bool {
+    static LAST_ID: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+    let mut last = LAST_ID.lock().unwrap();
+    let mut template = rpc.call("getblocktemplate", json!([{"rules": ["segwit"]}]));
+    for _ in 0..30 {
+        if template["longpollid"].as_str() != Some(last.as_str()) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        template = rpc.call("getblocktemplate", json!([{"rules": ["segwit"]}]));
+    }
+    assert_ne!(template["longpollid"].as_str(), Some(last.as_str()), "no fresh block template after 30 s");
+    *last = template["longpollid"].as_str().unwrap().to_string();
+    let txid = t.compute_txid().to_string();
+    template["transactions"].as_array().unwrap().iter().any(|e| e["txid"].as_str() == Some(txid.as_str()))
+}
+
+fn in_mempool(rpc: &rpc::Rpc, t: &Transaction) -> bool {
+    rpc.try_call("getmempoolentry", json!([t.compute_txid().to_string()])).is_ok()
+}
+
+/// The fee of a mempool transaction, from the node.
+fn mempool_fee(rpc: &rpc::Rpc, t: &Transaction) -> u64 {
+    let entry = rpc.call("getmempoolentry", json!([t.compute_txid().to_string()]));
+    (entry["fees"]["base"].as_f64().unwrap() * 1e8).round() as u64
+}
+
+/// What a replacement of `fee` sats must pay at least, for a replacement of `vsize` vbytes.
+fn outbid(fee: u64, vsize: usize) -> u64 {
+    fee + (INCREMENTAL_RELAY_SAT_PER_KVB * vsize as u64).div_ceil(1000) + 1
+}
+
+/// The operator's confirmed coins for CPFP children, one per child.
+struct Bumper {
+    coins: Vec<(Utxo, bitcoin::key::Keypair)>,
+    rate: u64,
+    paid: u64,
+}
+
+impl Bumper {
+    /// A child spending `handle` (an output of `parent`) and the next coin, carrying the package
+    /// to the market rate and paying at least `min_fee`.
+    fn child(&mut self, keys: &Keys, rpc: &rpc::Rpc, parent: &Transaction, handle: &Utxo, handle_signer: &bitcoin::key::Keypair, min_fee: u64) -> Transaction {
+        let (coin, signer) = self.coins.pop().expect("out of bump coins");
+        let parent_fee = mempool_fee(rpc, parent);
+        let child = bump_child(keys, parent, parent_fee, handle, handle_signer, &coin, &signer, self.rate, min_fee, keys.operator_script());
+        self.paid += handle.sats() + coin.sats() - child.output[0].value.to_sat();
+        child
+    }
+}
+
+/// Posts a presigned `parent` in a spike and the operator's CPFP child through `handle`.
+/// Records whether the next block template takes the parent before and after the child, and
+/// returns the child's name and transaction for mining.
+#[allow(clippy::too_many_arguments)]
+fn post_bumped(rpc: &rpc::Rpc, trace: &mut Trace, bumper: &mut Bumper, keys: &Keys, name: &str, parent: &Transaction, note: &str, handle: (&Utxo, &bitcoin::key::Keypair)) -> (String, Transaction) {
+    trace.send(rpc, name, parent, note).unwrap_or_else(|e| panic!("{name} refused by the mempool: {e}"));
+    trace.annotate(name, "in_template_alone", json!(in_template(rpc, parent)));
+    let child = bumper.child(keys, rpc, parent, handle.0, handle.1, 0);
+    let child_name = format!("{name}+cpfp");
+    trace.send(rpc, &child_name, &child, &format!("operator's CPFP child of {name} at {} sat/vB", bumper.rate)).unwrap_or_else(|e| panic!("{child_name} refused: {e}"));
+    trace.annotate(name, "in_template_with_child", json!(in_template(rpc, parent)));
+    (child_name, child)
 }
 
 fn rpc_from_env() -> rpc::Rpc {
@@ -254,16 +397,17 @@ struct Setup {
     timeout_ka_sig: Vec<u8>,
 }
 
-/// The timeout as anyone completes it from the presigned signatures.
-fn timeout_tx(s: &Setup, reward_to: ScriptBuf) -> Transaction {
+/// The timeout as anyone completes it from the presigned signatures, at the market `rate` and
+/// paying at least `min_fee`.
+fn timeout_tx(s: &Setup, reward_to: ScriptBuf, rate: u64, min_fee: u64) -> Transaction {
     let ka_witness = Witness::from_slice(&[s.timeout_ka_sig.clone()]);
-    slash_tx(&s.kickoff.kb, &s.timeout_kb_sig, &s.kickoff.ka, Sequence::from_height(T_ASSERT), ka_witness, reward_to)
+    slash_tx(&s.kickoff.kb, &s.timeout_kb_sig, &s.kickoff.ka, Sequence::from_height(T_ASSERT), ka_witness, reward_to, rate, min_fee)
 }
 
 /// A disprove through A's leaf `index` with the challenger's witness `items`.
-fn disprove_tx(keys: &Keys, s: &Setup, index: usize, leaf: &ScriptBuf, items: Vec<Vec<u8>>, reward_to: ScriptBuf) -> Transaction {
+fn disprove_tx(keys: &Keys, s: &Setup, index: usize, leaf: &ScriptBuf, items: Vec<Vec<u8>>, reward_to: ScriptBuf, rate: u64) -> Transaction {
     let a_witness = script_path_witness(items, leaf, &s.a_tree, index, keys);
-    slash_tx(&s.kickoff.kb, &s.disprove_kb_sig, &s.chain.a, RBF, a_witness, reward_to)
+    slash_tx(&s.kickoff.kb, &s.disprove_kb_sig, &s.chain.a, RBF, a_witness, reward_to, rate, 0)
 }
 
 fn timing() -> Value {
@@ -279,15 +423,19 @@ fn timing() -> Value {
     })
 }
 
-fn scenario(inp: &Inputs, name: &str) {
+fn scenario(inp: &Inputs, run: &Run, name: &str) {
     const NAMES: [&str; 6] = ["unchallenged", "challenged", "tampered", "silent", "incomplete", "stall"];
     assert!(NAMES.contains(&name), "unknown scenario {name}; one of {NAMES:?}");
+    assert!(!run.spike() || matches!(name, "unchallenged" | "challenged"), "a fee spike applies to `unchallenged` and `challenged` only");
     let rpc = rpc_from_env();
     let miner = rpc.new_address();
     let keys = Keys::new();
+    let market = run.market;
     let mut trace = Trace { rows: vec![] };
-    let mut facts = json!({"scenario": name, "fee_rate_sat_per_vb": FEE_RATE, "timing": timing(),
-        "bond_sats": BOND, "burn_sats": BURN, "connector_sats": CONNECTOR});
+    let mut facts = json!({"scenario": name, "graph": run.graph.name(), "fee_rate_sat_per_vb": FEE_RATE, "market_fee_rate_sat_per_vb": market,
+        "max_fee_rate_sat_per_vb": MAX_FEE_RATE, "timing": timing(), "bond_sats": BOND, "burn_sats": BURN, "connector_sats": CONNECTOR,
+        "anchor_sats": if run.graph.anchored() { ANCHOR } else { 0 }});
+    facts["node_blockmintxfee"] = rpc.call("getmininginfo", json!([]))["blockmintxfee"].clone();
 
     // The committee presigns payouts for the operator's proposed statement. In `tampered` that
     // statement is S' (refund moved between buyers), which the batch proof does not prove.
@@ -308,12 +456,16 @@ fn scenario(inp: &Inputs, name: &str) {
     let sample = chunked::sign(assertions(inp, "honest"), &secrets);
     let worst_items: Vec<Vec<Vec<u8>>> = batches.iter().map(|b| worst_case_items(&chunked::commit_witness(&sample, b))).collect();
     let worst_plan = CommitPlan { batches: &batches, leaves: &commit_leaves, trees: &commit_trees, items: &worst_items };
-    let layout = commit_layout(&keys, &worst_plan);
-    // A challenger pays the operator the whole assert chain's cost, rounded up to 1,000 sats.
-    let challenge_amount = layout.reserve().div_ceil(1000) * 1000;
+    let layout = commit_layout(&keys, &worst_plan, run.graph);
+    let child_vsize = bump_child_vsize(&keys);
+    // A challenger pays the operator the assert chain's cost: at FEE_RATE in the M2 graph; in the
+    // anchored graph at MAX_FEE_RATE, CPFP children included. Rounded up to 1,000 sats.
+    let challenge_amount = layout.challenge_amount(child_vsize);
+    facts["bump_child_vbytes"] = json!(child_vsize);
+    facts["assert_chain_bump_budget_at_max_fee_rate_sats"] = json!(layout.bump_budget(MAX_FEE_RATE, child_vsize));
 
     // Funding, in one block: an escrow per active buyer, the operator's bond and assert
-    // reserve, and a coin a challenger will spend.
+    // reserve, a coin a challenger will spend, and in a spike the operator's bump coins.
     let mut escrows: Vec<Escrow> = tpl.escrows.iter().map(|s| Escrow::new(&keys, &s.buyer)).collect();
     let challenger = keypair(&keys.secp, "challenger");
     let challenger_script = payee_script(&keys, "challenger");
@@ -321,12 +473,23 @@ fn scenario(inp: &Inputs, name: &str) {
     outs.push((keys.operator_script(), BOND));
     outs.push((key_path_script(&keys.secp, "operator-reserve"), layout.reserve()));
     outs.push((challenger_script.clone(), challenge_amount + CHALLENGER_COIN_EXTRA));
+    let bump_coins = if run.spike() { BUMP_COINS } else { 0 };
+    // Enough for a child that carries a 100 kvB parent to the market rate.
+    let bump_coin_sats = market * 100_000 + 20_000;
+    for i in 0..bump_coins {
+        outs.push((key_path_script(&keys.secp, &format!("operator-bump-{i}")), bump_coin_sats));
+    }
     let funded = fund_many(&rpc, &outs, &miner);
     for (e, u) in escrows.iter_mut().zip(&funded) {
         e.utxo = u.clone();
     }
     let n = escrows.len();
     let (bond, reserve, challenger_coin) = (funded[n].clone(), funded[n + 1].clone(), funded[n + 2].clone());
+    let mut bumper = Bumper {
+        coins: (0..bump_coins).map(|i| (funded[n + 3 + i].clone(), keypair(&keys.secp, &format!("operator-bump-{i}")))).collect(),
+        rate: market,
+        paid: 0,
+    };
     let h_e = rpc.height();
     facts["escrows"] = json!(escrows.iter().map(|e| json!({"buyer": e.buyer, "outpoint": e.utxo.outpoint.to_string(), "sats": e.utxo.sats()})).collect::<Vec<_>>());
     facts["funded_height"] = json!(h_e);
@@ -342,17 +505,18 @@ fn scenario(inp: &Inputs, name: &str) {
     if name == "stall" {
         // The operator never kicks off. Buyers wait out T_refund and take their escrow back;
         // the bond was never committed, so nothing is slashed.
-        refunds(&rpc, &miner, &keys, &mut trace, &escrows, &refund_payee, &mut facts);
+        refunds(&rpc, &miner, &keys, &mut trace, &escrows, &refund_payee, &mut facts, market);
         let unspent = |u: &Utxo| !rpc.call("gettxout", json!([u.outpoint.txid.to_string(), u.outpoint.vout])).is_null();
         facts["bond_unspent"] = json!(unspent(&bond));
         facts["reserve_unspent"] = json!(unspent(&reserve));
-        finish(inp, name, &trace, &mut facts);
+        finish(inp, run, name, &trace, &mut facts);
         return;
     }
 
     // Setup, all off chain: the kickoff, A's script tree, the assert chain and every presigned
-    // committee signature.
-    let kickoff = kickoff_tx(&keys, &bond);
+    // committee signature. The kickoff's txid is fixed before presigning, so its fee is too:
+    // FEE_RATE in the anchored graph, which can bump it, and the market rate in the M2 graph.
+    let kickoff = kickoff_tx(&keys, &bond, run.graph, if run.graph.anchored() { FEE_RATE } else { market });
     let challenge_sig = challenge_signature(&keys, &kickoff.kc, challenge_amount);
     let escrow_inputs = |inputs: &mut Vec<PayoutInput>| {
         for e in &escrows {
@@ -365,7 +529,7 @@ fn scenario(inp: &Inputs, name: &str) {
         PayoutInput { utxo: kickoff.kb.clone(), sequence: RBF, spend: Spend::KeyPath(None) },
     ];
     escrow_inputs(&mut inputs);
-    let payout_unchallenged = committee_payout(&keys, &inputs, template_outputs.clone());
+    let payout_unchallenged = committee_payout(&keys, &inputs, template_outputs.clone(), run.graph);
 
     let partial = partial(inp);
     let full = timed("full tapscripts", || chunked::full_tapscripts(&pubkeys, &partial));
@@ -384,7 +548,7 @@ fn scenario(inp: &Inputs, name: &str) {
         PayoutInput { utxo: kickoff.kb.clone(), sequence: RBF, spend: Spend::KeyPath(None) },
     ];
     escrow_inputs(&mut inputs);
-    let payout_asserted = committee_payout(&keys, &inputs, template_outputs.clone());
+    let payout_asserted = committee_payout(&keys, &inputs, template_outputs.clone(), run.graph);
     let (disprove_kb_sig, _) = slash_signatures(&keys, &kickoff.kb, &chain.a, RBF, false);
     let (timeout_kb_sig, timeout_ka_sig) = slash_signatures(&keys, &kickoff.kb, &kickoff.ka, Sequence::from_height(T_ASSERT), true);
     let s = Setup {
@@ -403,6 +567,7 @@ fn scenario(inp: &Inputs, name: &str) {
     };
     facts["setup"] = json!({
         "kickoff_txid": s.kickoff.tx.compute_txid().to_string(),
+        "kickoff_vbytes": s.kickoff.tx.vsize(),
         "kb_sats": s.kickoff.kb.sats(),
         "a_outpoint": s.chain.a.outpoint.to_string(), "a_sats": s.chain.a.sats(),
         "a_tree": {"leaves": s.a_tree.leaves.len(), "depth": s.a_tree.depth(), "bitvm_leaves": NUM_TAPS, "binding_leaves": NUM_PUBS,
@@ -410,6 +575,10 @@ fn scenario(inp: &Inputs, name: &str) {
         "commit_groups": s.chain.groups.iter().map(|g| g.len()).collect::<Vec<_>>(),
         "commit_fees_sats": s.chain.commit_fees,
         "assert_init_fee_sats": layout.init_fee,
+        "assert_final_vbytes": layout.final_vsize,
+        "payout_version": s.payout_unchallenged.version.0,
+        "payout_unchallenged_vbytes": s.payout_unchallenged.vsize(),
+        "payout_asserted_vbytes": s.payout_asserted.vsize(),
         "presigned_payout_unchallenged_txid": s.payout_unchallenged.compute_txid().to_string(),
         "presigned_payout_asserted_txid": s.payout_asserted.compute_txid().to_string(),
         "committee_signatures": {
@@ -420,9 +589,15 @@ fn scenario(inp: &Inputs, name: &str) {
         "challenge_signature_bytes": s.challenge_sig.len(),
     });
 
-    // The kickoff.
-    trace.record(&rpc, "kickoff", &s.kickoff.tx, "bond -> KC + KA + KB").expect("kickoff standard");
-    trace.mine(&rpc, &miner, &[("kickoff", &s.kickoff.tx)]);
+    // The kickoff: in a spike the anchored graph carries it with a child through its anchor.
+    if run.spike() && run.graph.anchored() {
+        let anchor = s.kickoff.anchor.clone().unwrap();
+        let (child_name, child) = post_bumped(&rpc, &mut trace, &mut bumper, &keys, "kickoff", &s.kickoff.tx, "bond -> KC + KA + KB + anchor", (&anchor, &keys.anchor_keypair()));
+        trace.mine_mempool(&rpc, &miner, &[("kickoff", &s.kickoff.tx), (&child_name, &child)]);
+    } else {
+        trace.record(&rpc, "kickoff", &s.kickoff.tx, if run.graph.anchored() { "bond -> KC + KA + KB + anchor" } else { "bond -> KC + KA + KB" }).expect("kickoff standard");
+        trace.mine(&rpc, &miner, &[("kickoff", &s.kickoff.tx)]);
+    }
     let h_k = rpc.height();
     assert!(h_k - h_e <= u64::from(T_KICKOFF), "kickoff later than T_kickoff");
     facts["kickoff_height"] = json!(h_k);
@@ -431,24 +606,31 @@ fn scenario(inp: &Inputs, name: &str) {
     let pi_verifies = zkc_convert::verify(&inp.vk, &inp.proof, &chunked::fr_list(&template_signals)).unwrap();
     facts["watcher_check_pi_verifies_for_template"] = json!(pi_verifies);
     assert_eq!(pi_verifies, name != "tampered");
-    let challenge = challenge_tx(&keys, &s.kickoff.kc, &s.challenge_sig, s.challenge_amount, &challenger_coin, &challenger, challenger_script.clone());
+    let challenge = challenge_tx(&keys, &s.kickoff.kc, &s.challenge_sig, s.challenge_amount, &challenger_coin, &challenger, challenger_script.clone(), market);
 
     match name {
         "unchallenged" => {
             mine_to_tip(&rpc, &miner, h_k + u64::from(T_CHALLENGE) - 2);
             facts["negative_early_payout"] = trace.reject(&rpc, &miner, "payout_unchallenged(early)", &s.payout_unchallenged, "one block before T_challenge");
-            facts["negative_early_timeout"] = trace.reject(&rpc, &miner, "timeout(early)", &timeout_tx(&s, challenger_script.clone()), "before T_assert");
+            facts["negative_early_timeout"] = trace.reject(&rpc, &miner, "timeout(early)", &timeout_tx(&s, challenger_script.clone(), market, 0), "before T_assert");
             mine_to_tip(&rpc, &miner, h_k + u64::from(T_CHALLENGE) - 1);
-            trace.record(&rpc, "payout_unchallenged", &s.payout_unchallenged, "KC after T_challenge + KA + KB + every escrow").expect("payout standard");
-            trace.mine(&rpc, &miner, &[("payout_unchallenged", &s.payout_unchallenged)]);
-            let mined = rpc.transaction(&s.payout_unchallenged.compute_txid());
-            assert_eq!(&mined.output[..template_outputs.len()], &template_outputs[..], "payout outputs differ from the template");
-            facts["payout_outputs_equal_template"] = json!(true);
-            facts["payout_height_minus_kickoff_height"] = json!(rpc.height() - h_k);
-            facts["operator_back_sats"] = json!(mined.output.last().unwrap().value.to_sat());
-            facts["negative_challenge_after_payout"] = trace.reject(&rpc, &miner, "challenge(after payout)", &challenge, "KC already spent");
-            mine_to_tip(&rpc, &miner, h_k + u64::from(T_ASSERT) - 1);
-            facts["negative_timeout_after_payout"] = trace.reject(&rpc, &miner, "timeout(after payout)", &timeout_tx(&s, challenger_script.clone()), "T_assert reached; KA and KB already spent");
+            if run.spike() {
+                let paid = spike_payout_unchallenged(&rpc, &miner, &keys, &mut trace, &mut bumper, &s, &tpl, &template_outputs, h_k, market, &mut facts);
+                if !paid {
+                    refunds(&rpc, &miner, &keys, &mut trace, &escrows, &refund_payee, &mut facts, market);
+                }
+            } else {
+                trace.record(&rpc, "payout_unchallenged", &s.payout_unchallenged, "KC after T_challenge + KA + KB + every escrow").expect("payout standard");
+                trace.mine(&rpc, &miner, &[("payout_unchallenged", &s.payout_unchallenged)]);
+                let mined = rpc.transaction(&s.payout_unchallenged.compute_txid());
+                assert_eq!(&mined.output[..template_outputs.len()], &template_outputs[..], "payout outputs differ from the template");
+                facts["payout_outputs_equal_template"] = json!(true);
+                facts["payout_height_minus_kickoff_height"] = json!(rpc.height() - h_k);
+                facts["operator_back_sats"] = json!(mined.output.last().unwrap().value.to_sat());
+                facts["negative_challenge_after_payout"] = trace.reject(&rpc, &miner, "challenge(after payout)", &challenge, "KC already spent");
+                mine_to_tip(&rpc, &miner, h_k + u64::from(T_ASSERT) - 1);
+                facts["negative_timeout_after_payout"] = trace.reject(&rpc, &miner, "timeout(after payout)", &timeout_tx(&s, challenger_script.clone(), market, 0), "T_assert reached; KA and KB already spent");
+            }
         }
         "challenged" | "tampered" => {
             // The honest operator is challenged in the last block it can be; the tampered one at once.
@@ -465,14 +647,38 @@ fn scenario(inp: &Inputs, name: &str) {
                     trace.reject(&rpc, &miner, "payout_unchallenged(challenged)", &s.payout_unchallenged, "T_challenge reached; KC spent by the challenge");
             }
 
+            if run.spike() && !run.graph.anchored() {
+                // M2's assert chain pays FEE_RATE and has no output to bump from: it waits below
+                // the market until the timeout opens, and anyone slashes the honest operator.
+                trace.send(&rpc, "assert_init", &s.chain.assert_init, "reserve -> commit outputs; presigned at FEE_RATE, no output to bump").expect("assert_init accepted");
+                trace.annotate("assert_init", "in_template_alone", json!(in_template(&rpc, &s.chain.assert_init)));
+                let start = rpc.height();
+                mine_to_tip(&rpc, &miner, h_k + u64::from(T_ASSERT) - 1);
+                facts["assert_init_blocks_waited"] = json!(rpc.height() - start);
+                facts["assert_init_confirmed_before_t_assert"] = json!(rpc.confirmations(&s.chain.assert_init.compute_txid()).is_some());
+                facts["assert_init_in_template_at_t_assert"] = json!(in_template(&rpc, &s.chain.assert_init));
+                let t = timeout_tx(&s, challenger_script.clone(), market, 0);
+                trace.record(&rpc, "timeout", &t, "KB (presigned SINGLE) + KA (presigned NONE) after T_assert; the operator was honest").expect("timeout standard");
+                trace.mine(&rpc, &miner, &[("timeout", &t)]);
+                facts["burned_sats"] = json!(t.output[0].value.to_sat());
+                facts["slasher_reward_sats"] = json!(t.output[1].value.to_sat());
+                refunds(&rpc, &miner, &keys, &mut trace, &escrows, &refund_payee, &mut facts, market);
+                finish(inp, run, name, &trace, &mut facts);
+                return;
+            }
+
             // The operator asserts: the honest proof, or in `tampered` the assertion of S' with π.
             let asserted = chunked::sign(assertions(inp, if name == "tampered" { "tampered" } else { "honest" }), &secrets);
             let items: Vec<Vec<Vec<u8>>> = batches.iter().map(|b| chunked::commit_witness(&asserted, b)).collect();
             let plan = CommitPlan { batches: &batches, leaves: &commit_leaves, trees: &commit_trees, items: &items };
             let commits = signed_commits(&keys, &s.chain, &plan);
-            post_assert_chain(&rpc, &miner, &mut trace, &s.chain, &commits, name == "challenged", &mut facts);
-            trace.record(&rpc, "assert_final", &s.chain.assert_final, "KA + every D_k -> A").expect("assert_final standard");
-            trace.mine(&rpc, &miner, &[("assert_final", &s.chain.assert_final)]);
+            if run.spike() {
+                post_assert_chain_bumped(&rpc, &miner, &mut trace, &mut bumper, &keys, &s.chain, &commits);
+            } else {
+                post_assert_chain(&rpc, &miner, &mut trace, &s.chain, &commits, name == "challenged", &mut facts);
+                trace.record(&rpc, "assert_final", &s.chain.assert_final, "KA + every D_k -> A").expect("assert_final standard");
+                trace.mine(&rpc, &miner, &[("assert_final", &s.chain.assert_final)]);
+            }
             let h_a = rpc.height();
             facts["a_height_minus_kickoff_height"] = json!(h_a - h_k);
             facts["blocks_to_spare_before_timeout"] = json!(h_k + u64::from(T_ASSERT) - 1 - h_a);
@@ -484,40 +690,51 @@ fn scenario(inp: &Inputs, name: &str) {
                 .filter(|i| hex::decode(&asserted_pubs[*i]).unwrap() != chunked::u256_assertion(&template_signals[*i]))
                 .map(template::signal_name)
                 .collect::<Vec<_>>());
-            let found = timed("challenger validates", || chunked::validate(&inp.vk, &chain_sigs, &pubkeys, &s.full));
             if name == "challenged" {
-                assert!(found.is_none(), "honest assertion is disprovable at {:?}", found.map(|f| f.0));
-                facts["bitvm_validate"] = json!("no disprovable chunk");
-                let last = NUM_TAPS - 1;
-                let items = chunked::witness_for_leaf(&inp.vk, &chain_sigs, last).expect("witness for the final leaf");
-                assert!(!chunked::leaf_succeeds(&s.full[last], &items));
-                let fake = disprove_tx(&keys, &s, last, &s.full[last], items, challenger_script.clone());
-                facts["negative_disprove_final_chunk"] = trace.reject(&rpc, &miner, "disprove(final chunk)", &fake, "honest witness for the validating leaf");
-                let i = template::refund(0);
-                let items = chunked::binding_witness(&chain_sigs, i);
-                assert!(!chunked::leaf_succeeds(&s.binding[i], &items));
-                let fake = disprove_tx(&keys, &s, binding_index(i), &s.binding[i], items, challenger_script.clone());
-                facts["negative_disprove_binding"] = trace.reject(&rpc, &miner, "disprove(binding refund[0])", &fake, "honest commitment against its own binding leaf");
+                if run.validate {
+                    let found = timed("challenger validates", || chunked::validate(&inp.vk, &chain_sigs, &pubkeys, &s.full));
+                    assert!(found.is_none(), "honest assertion is disprovable at {:?}", found.map(|f| f.0));
+                    facts["bitvm_validate"] = json!("no disprovable chunk");
+                    let last = NUM_TAPS - 1;
+                    let items = chunked::witness_for_leaf(&inp.vk, &chain_sigs, last).expect("witness for the final leaf");
+                    assert!(!chunked::leaf_succeeds(&s.full[last], &items));
+                    let fake = disprove_tx(&keys, &s, last, &s.full[last], items, challenger_script.clone(), market);
+                    facts["negative_disprove_final_chunk"] = trace.reject(&rpc, &miner, "disprove(final chunk)", &fake, "honest witness for the validating leaf");
+                    let i = template::refund(0);
+                    let items = chunked::binding_witness(&chain_sigs, i);
+                    assert!(!chunked::leaf_succeeds(&s.binding[i], &items));
+                    let fake = disprove_tx(&keys, &s, binding_index(i), &s.binding[i], items, challenger_script.clone(), market);
+                    facts["negative_disprove_binding"] = trace.reject(&rpc, &miner, "disprove(binding refund[0])", &fake, "honest commitment against its own binding leaf");
+                } else {
+                    facts["bitvm_validate"] = json!("skipped (ZKC_VALIDATE=0)");
+                }
 
                 mine_to_tip(&rpc, &miner, h_a + u64::from(T_DISPROVE) - 2);
                 facts["negative_early_payout"] = trace.reject(&rpc, &miner, "payout_asserted(early)", &s.payout_asserted, "one block before T_disprove");
                 mine_to_tip(&rpc, &miner, h_a + u64::from(T_DISPROVE) - 1);
-                trace.record(&rpc, "payout_asserted", &s.payout_asserted, "A after T_disprove + KB + every escrow").expect("payout standard");
-                trace.mine(&rpc, &miner, &[("payout_asserted", &s.payout_asserted)]);
+                if run.spike() {
+                    let back = Utxo::of(&s.payout_asserted, s.payout_asserted.output.len() - 1);
+                    let (child_name, child) = post_bumped(&rpc, &mut trace, &mut bumper, &keys, "payout_asserted", &s.payout_asserted, "A after T_disprove + KB + every escrow", (&back, &keys.operator));
+                    trace.mine_mempool(&rpc, &miner, &[("payout_asserted", &s.payout_asserted), (&child_name, &child)]);
+                } else {
+                    trace.record(&rpc, "payout_asserted", &s.payout_asserted, "A after T_disprove + KB + every escrow").expect("payout standard");
+                    trace.mine(&rpc, &miner, &[("payout_asserted", &s.payout_asserted)]);
+                }
                 let mined = rpc.transaction(&s.payout_asserted.compute_txid());
                 assert_eq!(&mined.output[..template_outputs.len()], &template_outputs[..], "payout outputs differ from the template");
                 facts["payout_outputs_equal_template"] = json!(true);
                 facts["operator_back_sats"] = json!(mined.output.last().unwrap().value.to_sat());
                 let tip = rpc.height().max(h_k + u64::from(T_ASSERT) - 1);
                 mine_to_tip(&rpc, &miner, tip);
-                facts["negative_timeout_after_assert"] = trace.reject(&rpc, &miner, "timeout(after assert)", &timeout_tx(&s, challenger_script.clone()), "T_assert reached; KA spent by assert_final");
+                facts["negative_timeout_after_assert"] = trace.reject(&rpc, &miner, "timeout(after assert)", &timeout_tx(&s, challenger_script.clone(), market, 0), "T_assert reached; KA spent by assert_final");
             } else {
+                let found = timed("challenger validates", || chunked::validate(&inp.vk, &chain_sigs, &pubkeys, &s.full));
                 let (index, items) = found.expect("tampered assertion not disprovable");
                 let leaf = &s.full[index];
                 assert!(chunked::leaf_succeeds(leaf, &items), "challenger witness does not open the leaf");
                 facts["bitvm_validate"] = json!(format!("chunk {index} disprovable"));
                 facts["disprove_leaf"] = json!({"index": index, "leaf_bytes": leaf.len(), "witness_items": items.len()});
-                let d = disprove_tx(&keys, &s, index, leaf, items, challenger_script.clone());
+                let d = disprove_tx(&keys, &s, index, leaf, items, challenger_script.clone(), market);
                 trace.record(&rpc, "disprove", &d, &format!("KB (presigned SINGLE) + A through BitVM chunk {index}")).ok();
                 trace.mine(&rpc, &miner, &[("disprove", &d)]);
                 facts["burned_sats"] = json!(d.output[0].value.to_sat());
@@ -525,8 +742,8 @@ fn scenario(inp: &Inputs, name: &str) {
                 mine_to_tip(&rpc, &miner, rpc.height().max(h_a + u64::from(T_DISPROVE) - 1));
                 facts["negative_payout_after_disprove"] = trace.reject(&rpc, &miner, "payout_asserted(after disprove)", &s.payout_asserted, "T_disprove reached; A and KB spent");
                 mine_to_tip(&rpc, &miner, rpc.height().max(h_k + u64::from(T_ASSERT) - 1));
-                facts["negative_timeout_after_disprove"] = trace.reject(&rpc, &miner, "timeout(after disprove)", &timeout_tx(&s, challenger_script.clone()), "T_assert reached; KA and KB spent");
-                refunds(&rpc, &miner, &keys, &mut trace, &escrows, &refund_payee, &mut facts);
+                facts["negative_timeout_after_disprove"] = trace.reject(&rpc, &miner, "timeout(after disprove)", &timeout_tx(&s, challenger_script.clone(), market, 0), "T_assert reached; KA and KB spent");
+                refunds(&rpc, &miner, &keys, &mut trace, &escrows, &refund_payee, &mut facts, market);
             }
         }
         "silent" | "incomplete" => {
@@ -541,22 +758,167 @@ fn scenario(inp: &Inputs, name: &str) {
                 post_assert_chain(&rpc, &miner, &mut trace, &s.chain, &commits, false, &mut facts);
             }
             mine_to_tip(&rpc, &miner, h_k + u64::from(T_ASSERT) - 2);
-            facts["negative_early_timeout"] = trace.reject(&rpc, &miner, "timeout(early)", &timeout_tx(&s, challenger_script.clone()), "one block before T_assert");
+            facts["negative_early_timeout"] = trace.reject(&rpc, &miner, "timeout(early)", &timeout_tx(&s, challenger_script.clone(), market, 0), "one block before T_assert");
             facts["negative_payout_unchallenged_after_challenge"] =
                 trace.reject(&rpc, &miner, "payout_unchallenged(challenged)", &s.payout_unchallenged, "KC spent by the challenge");
             mine_to_tip(&rpc, &miner, h_k + u64::from(T_ASSERT) - 1);
-            let t = timeout_tx(&s, challenger_script.clone());
+            let t = timeout_tx(&s, challenger_script.clone(), market, 0);
             trace.record(&rpc, "timeout", &t, "KB (presigned SINGLE) + KA (presigned NONE) after T_assert").expect("timeout standard");
             trace.mine(&rpc, &miner, &[("timeout", &t)]);
             facts["burned_sats"] = json!(t.output[0].value.to_sat());
             facts["slasher_reward_sats"] = json!(t.output[1].value.to_sat());
             facts["negative_assert_final_after_timeout"] = trace.reject(&rpc, &miner, "assert_final(after timeout)", &s.chain.assert_final,
                 if name == "incomplete" { "KA spent by the timeout" } else { "no commits, and KA spent by the timeout" });
-            refunds(&rpc, &miner, &keys, &mut trace, &escrows, &refund_payee, &mut facts);
+            refunds(&rpc, &miner, &keys, &mut trace, &escrows, &refund_payee, &mut facts, market);
         }
         other => panic!("unknown scenario {other}"),
     }
-    finish(inp, name, &trace, &mut facts);
+    if run.spike() {
+        facts["operator_cpfp_fees_sats"] = json!(bumper.paid);
+    }
+    finish(inp, run, name, &trace, &mut facts);
+}
+
+/// The unchallenged payout in a spike. It pays FEE_RATE, below the market. A payee pins it
+/// first; then the operator posts a CPFP child through its back output. Returns whether the
+/// payout was mined; if not, the pinning payee posts the timeout once it opens.
+#[allow(clippy::too_many_arguments)]
+fn spike_payout_unchallenged(
+    rpc: &rpc::Rpc,
+    miner: &Address,
+    keys: &Keys,
+    trace: &mut Trace,
+    bumper: &mut Bumper,
+    s: &Setup,
+    tpl: &template::Template,
+    template_outputs: &[TxOut],
+    h_k: u64,
+    market: u64,
+    facts: &mut Value,
+) -> bool {
+    let payout = &s.payout_unchallenged;
+    trace.send(rpc, "payout_unchallenged", payout, "KC after T_challenge + KA + KB + every escrow; presigned at FEE_RATE").expect("payout accepted");
+    trace.annotate("payout_unchallenged", "in_template_alone", json!(in_template(rpc, payout)));
+    let (pinner, pins, pin_fees) = pin_payout(rpc, keys, trace, payout, tpl, market, facts);
+
+    let back = Utxo::of(payout, payout.output.len() - 1);
+    // Under TRUC the operator's child is a sibling of the pin and must outbid it.
+    let min_fee = if payout.version == Version(3) { outbid(pin_fees, bump_child_vsize(keys) as usize) } else { 0 };
+    let child = bumper.child(keys, rpc, payout, &back, &keys.operator, min_fee);
+    let verdict = trace.send(rpc, "payout_unchallenged+cpfp", &child, "operator's CPFP child through its back output");
+    facts["operator_cpfp"] = json!(verdict.clone().map(|()| "accepted".to_string()).unwrap_or_else(|e| e));
+    facts["pins_in_mempool_after_cpfp"] = json!(pins.iter().filter(|p| in_mempool(rpc, p)).count());
+    let carried = verdict.is_ok() && in_template(rpc, payout);
+    facts["payout_in_template_after_cpfp"] = json!(carried);
+    if carried {
+        trace.mine_mempool(rpc, miner, &[("payout_unchallenged", payout), ("payout_unchallenged+cpfp", &child)]);
+        let mined = rpc.transaction(&payout.compute_txid());
+        assert_eq!(&mined.output[..template_outputs.len()], template_outputs, "payout outputs differ from the template");
+        facts["payout_outputs_equal_template"] = json!(true);
+        facts["payout_height_minus_kickoff_height"] = json!(rpc.height() - h_k);
+        facts["operator_back_sats"] = json!(mined.output.last().unwrap().value.to_sat());
+        return true;
+    }
+    // The payout cannot be carried: it waits below the market until the timeout opens, and the
+    // pinning payee replaces it (and the pins) with the timeout, slashing the operator.
+    mine_to_tip(rpc, miner, h_k + u64::from(T_ASSERT) - 1);
+    facts["payout_in_mempool_at_t_assert"] = json!(in_mempool(rpc, payout));
+    let replaced = mempool_fee(rpc, payout) + pin_fees;
+    let reward_to = payee_script(keys, &pinner);
+    let draft = timeout_tx(s, reward_to.clone(), market, 0);
+    let t = timeout_tx(s, reward_to, market, outbid(replaced, draft.vsize()));
+    trace.send(rpc, "timeout", &t, &format!("posted by the pinning payee {pinner}; replaces the payout and its pins")).expect("timeout replaces the pinned payout");
+    trace.mine_mempool(rpc, miner, &[("timeout", &t)]);
+    facts["burned_sats"] = json!(t.output[0].value.to_sat());
+    facts["slasher_reward_sats"] = json!(t.output[1].value.to_sat());
+    facts["slasher"] = json!(pinner);
+    false
+}
+
+/// A payee of `payout` pins it: the payee with the smallest output, who gains most if the payout
+/// misses T_assert and it posts the timeout. Returns the payee, its pin transactions and their
+/// total fee.
+/// - TRUC payout: one version 3 child as large as TRUC allows, paying just less than would carry
+///   the payout to the market rate, so that the operator's child must outbid it.
+/// - Version 2 payout: a chain of small children, until the node refuses one.
+fn pin_payout(rpc: &rpc::Rpc, keys: &Keys, trace: &mut Trace, payout: &Transaction, tpl: &template::Template, market: u64, facts: &mut Value) -> (String, Vec<Transaction>, u64) {
+    let (index, spec) = tpl.outputs.iter().enumerate().filter(|(_, o)| o.role != "fee").min_by_key(|(_, o)| o.amount).unwrap();
+    let pinner = spec.payee.clone();
+    let signer = keypair(&keys.secp, &pinner);
+    let script = payee_script(keys, &pinner);
+    let spend = |coin: &Utxo, version: Version, outs: Vec<TxOut>| {
+        let mut t = tx_version(version, vec![(coin.outpoint, RBF)], outs);
+        let sig = sign_key_path(keys, &signer, &t, &bitcoin::sighash::Prevouts::All(&[coin.txout.clone()]), 0, bitcoin::TapSighashType::Default, None);
+        t.input[0].witness = Witness::from_slice(&[sig]);
+        t
+    };
+    let coin = Utxo::of(payout, index);
+    facts["pinner"] = json!({"payee": pinner, "payout_output_sats": coin.sats()});
+
+    if payout.version == Version(3) {
+        let padded = |pad: usize, fee: u64| {
+            let data = bitcoin::script::PushBytesBuf::try_from(vec![0x50u8; pad]).unwrap();
+            let op_return = bitcoin::script::Builder::new().push_opcode(bitcoin::opcodes::all::OP_RETURN).push_slice(data).into_script();
+            spend(&coin, Version(3), vec![txout(coin.sats() - fee, script.clone()), txout(0, op_return)])
+        };
+        let mut pad = TRUC_CHILD_MAX_VSIZE - padded(0, 0).vsize() - 8;
+        while padded(pad + 1, 0).vsize() <= TRUC_CHILD_MAX_VSIZE {
+            pad += 1;
+        }
+        let size = padded(pad, 0).vsize();
+        // Just under what would carry the payout to the market rate.
+        let fee = market * (payout.vsize() + size) as u64 - mempool_fee(rpc, payout) - 1;
+        let pin = padded(pad, fee);
+        trace.send(rpc, "pin", &pin, &format!("{pinner}'s TRUC child, just below the market with its parent")).expect("pin accepted");
+        trace.annotate("pin", "fee_sats", json!(fee));
+        trace.annotate("payout_unchallenged", "in_template_with_pin", json!(in_template(rpc, payout)));
+        return (pinner, vec![pin], fee);
+    }
+
+    let mut pins = vec![];
+    let mut fees = 0;
+    let mut prev = coin;
+    loop {
+        let draft = spend(&prev, Version::TWO, vec![txout(prev.sats(), script.clone())]);
+        let fee = draft.vsize() as u64;
+        let t = spend(&prev, Version::TWO, vec![txout(prev.sats() - fee, script.clone())]);
+        match send(rpc, &t) {
+            Ok(()) => {
+                fees += fee;
+                prev = Utxo::of(&t, 0);
+                pins.push(t);
+            }
+            Err(e) => {
+                facts["pin_chain"] = json!({"accepted": pins.len(), "vbytes_each": draft.vsize(), "fee_sats_total": fees, "next_refused": e});
+                eprintln!("  pin chain: {} accepted, the next refused: {e}", pins.len());
+                break;
+            }
+        }
+        assert!(pins.len() < 200, "the node accepted 200 pins");
+    }
+    (pinner, pins, fees)
+}
+
+/// Posts the anchored assert chain in a spike, each transaction with the operator's CPFP child
+/// through its anchor, in the same three blocks as at FEE_RATE.
+fn post_assert_chain_bumped(rpc: &rpc::Rpc, miner: &Address, trace: &mut Trace, bumper: &mut Bumper, keys: &Keys, chain: &AssertChain, commits: &[Transaction]) {
+    let anchor_key = keys.anchor_keypair();
+    let init = &chain.assert_init;
+    let (child_name, child) = post_bumped(rpc, trace, bumper, keys, "assert_init", init, "reserve -> commit outputs + anchor", (&anchor_of(init), &anchor_key));
+    trace.mine_mempool(rpc, miner, &[("assert_init", init), (&child_name, &child)]);
+
+    let names: Vec<String> = (0..commits.len()).map(|k| format!("commit[{k}]")).collect();
+    let mut children = vec![];
+    for ((t, name), group) in commits.iter().zip(&names).zip(&chain.groups) {
+        children.push(post_bumped(rpc, trace, bumper, keys, name, t, &format!("{} Winternitz batches + anchor", group.len()), (&anchor_of(t), &anchor_key)));
+    }
+    let mut named: Vec<(&str, &Transaction)> = names.iter().map(String::as_str).zip(commits).collect();
+    named.extend(children.iter().map(|(n, c)| (n.as_str(), c)));
+    trace.mine_mempool(rpc, miner, &named);
+
+    let last = &chain.assert_final;
+    let (child_name, child) = post_bumped(rpc, trace, bumper, keys, "assert_final", last, "KA + every D_k -> A + anchor", (&anchor_of(last), &anchor_key));
+    trace.mine_mempool(rpc, miner, &[("assert_final", last), (&child_name, &child)]);
 }
 
 /// Posts assert_init and the commits. With `probe`, first shows why the chain needs a block per
@@ -591,15 +953,17 @@ fn post_assert_chain(rpc: &rpc::Rpc, miner: &Address, trace: &mut Trace, chain: 
     trace.mine(rpc, miner, &named);
 }
 
-fn finish(inp: &Inputs, name: &str, trace: &Trace, facts: &mut Value) {
+fn finish(inp: &Inputs, run: &Run, name: &str, trace: &Trace, facts: &mut Value) {
     facts["mined_vbytes_total"] = json!(trace.mined_vbytes());
     facts["transactions"] = json!(trace.rows);
-    write_result(inp, &format!("scenario-{name}"), facts);
+    write_result(inp, run, &format!("scenario-{name}"), facts);
 }
 
-/// Buyers' timeout path: rejected one block early, accepted at T_refund.
-fn refunds(rpc: &rpc::Rpc, miner: &Address, keys: &Keys, trace: &mut Trace, escrows: &[Escrow], payee: &dyn Fn(&Escrow) -> ScriptBuf, facts: &mut Value) {
-    let txs: Vec<Transaction> = escrows.iter().map(|e| refund_tx(keys, e, payee(e))).collect();
+/// Buyers' timeout path: rejected one block early, accepted at T_refund. Each buyer signs its
+/// refund when posting, at the market `rate`.
+#[allow(clippy::too_many_arguments)]
+fn refunds(rpc: &rpc::Rpc, miner: &Address, keys: &Keys, trace: &mut Trace, escrows: &[Escrow], payee: &dyn Fn(&Escrow) -> ScriptBuf, facts: &mut Value, rate: u64) {
+    let txs: Vec<Transaction> = escrows.iter().map(|e| refund_tx(keys, e, payee(e), rate)).collect();
     let funded: Vec<u64> = escrows.iter().map(|e| rpc.confirmations(&e.utxo.outpoint.txid).unwrap()).collect();
     let youngest = *funded.iter().min().unwrap();
     // A refund enters the next block once its escrow has T_refund confirmations at the tip.
@@ -622,7 +986,7 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
         Some("timing") => println!("{}", serde_json::to_string_pretty(&timing()).unwrap()),
-        Some("scenario") if args.len() >= 4 => scenario(&load(Path::new(&args[2])), &args[3]),
+        Some("scenario") if args.len() >= 4 => scenario(&load(Path::new(&args[2])), &Run::from_env(), &args[3]),
         _ => {
             eprintln!("usage: zkc-m2 timing | zkc-m2 scenario <work> <name>");
             std::process::exit(2);

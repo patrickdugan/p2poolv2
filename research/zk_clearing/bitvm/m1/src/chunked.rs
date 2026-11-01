@@ -7,7 +7,7 @@ use ark_ff::BigInt;
 use ark_groth16::{Proof, VerifyingKey};
 use bitcoin::ScriptBuf;
 use bitvm::chunk::api::{
-    api_disprove_witness_for_leaf, api_generate_full_tapscripts, api_generate_partial_script,
+    api_disprove_witness_for_leaf, api_disprove_witnesses_for_all_leaves, api_generate_full_tapscripts, api_generate_partial_script,
     api_get_assertions_from_signature, api_get_pubkeys, api_get_signature_from_assertion,
     api_u256_assertion_bytes, generate_assertions, generate_signatures_for_any_proof,
     validate_assertions, Assertions, PublicKeys, Signatures, NUM_HASH, NUM_PUBS, NUM_TAPS, NUM_U256,
@@ -271,6 +271,11 @@ pub fn validate(vk: &VerifyingKey<Bn254>, sigs: &Signatures, pubkeys: &PublicKey
 
 pub fn witness_for_leaf(vk: &VerifyingKey<Bn254>, sigs: &Signatures, leaf: usize) -> Option<Vec<Vec<u8>>> {
     api_disprove_witness_for_leaf(vk, sigs.clone(), leaf).map(|hint| push_script_to_items(&hint))
+}
+
+/// The witness of every disprove leaf, in leaf order (M12), from one pass over the segments.
+pub fn witnesses_for_all_leaves(vk: &VerifyingKey<Bn254>, sigs: &Signatures) -> Vec<Vec<Vec<u8>>> {
+    api_disprove_witnesses_for_all_leaves(vk, sigs.clone()).iter().map(push_script_to_items).collect()
 }
 
 pub fn assertions_to_json(a: &Assertions) -> Value {
