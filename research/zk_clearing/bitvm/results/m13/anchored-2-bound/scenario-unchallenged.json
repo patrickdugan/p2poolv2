@@ -1,0 +1,290 @@
+{
+  "anchor_sats": 330,
+  "assert_chain_bump_budget_at_max_fee_rate_sats": 3399582,
+  "batch_height": 203,
+  "bond_outpoint": "399fa95e75777748f52006a736a3cd23a21dad76dd6f8df4ec0fa68009c951d8:5",
+  "bond_sats": 10000000,
+  "bump_child_vbytes": 169,
+  "burn_sats": 5000000,
+  "challenge_amount_sats": 4250000,
+  "connector_sats": 330,
+  "deadline": {
+    "height": 207,
+    "outpoint": "399fa95e75777748f52006a736a3cd23a21dad76dd6f8df4ec0fa68009c951d8:2",
+    "sats": 10000
+  },
+  "escrow_expiry_height": 230,
+  "escrows": [
+    {
+      "buyer": "buyer1",
+      "outpoint": "399fa95e75777748f52006a736a3cd23a21dad76dd6f8df4ec0fa68009c951d8:7",
+      "sats": 2000000
+    },
+    {
+      "buyer": "buyer2",
+      "outpoint": "399fa95e75777748f52006a736a3cd23a21dad76dd6f8df4ec0fa68009c951d8:0",
+      "sats": 1900000
+    },
+    {
+      "buyer": "buyer3",
+      "outpoint": "399fa95e75777748f52006a736a3cd23a21dad76dd6f8df4ec0fa68009c951d8:6",
+      "sats": 750000
+    }
+  ],
+  "fee_rate_sat_per_vb": 2,
+  "funded_height": 201,
+  "graph": "anchored",
+  "kickoff_height": 204,
+  "market_fee_rate_sat_per_vb": 2,
+  "max_fee_rate_sat_per_vb": 10,
+  "mined_vbytes_total": 998,
+  "negative_challenge_after_payout": {
+    "note": "KC already spent",
+    "rejected_block": "TestBlockValidity failed: bad-txns-inputs-missingorspent, CheckTxInputs: inputs missing/spent in transaction 883e49a6307470e7f5b22f70c24f453c6a5e067ffc30ccfa32265b3f5ce6ab3a",
+    "rejected_mempool": "missing-inputs",
+    "tip_height": 210,
+    "tx": "challenge(after payout)",
+    "txid": "883e49a6307470e7f5b22f70c24f453c6a5e067ffc30ccfa32265b3f5ce6ab3a",
+    "vbytes": 212,
+    "weight": 847
+  },
+  "negative_early_payout": {
+    "note": "one block before T_challenge",
+    "rejected_block": "TestBlockValidity failed: bad-txns-nonfinal, contains a non-BIP68-final transaction 89e3094af161c14f80ab69deec334bbb33707e9faca62ceaef0746ffc1beaf08",
+    "rejected_mempool": "non-BIP68-final",
+    "tip_height": 208,
+    "tx": "payout_unchallenged(early)",
+    "txid": "89e3094af161c14f80ab69deec334bbb33707e9faca62ceaef0746ffc1beaf08",
+    "vbytes": 700,
+    "weight": 2798
+  },
+  "negative_early_timeout": {
+    "note": "before T_assert",
+    "rejected_block": "TestBlockValidity failed: bad-txns-nonfinal, contains a non-BIP68-final transaction d05df16ae521c7eabaddcd73b2999ace18a7a6a67176fda956d50c85d009dfd4",
+    "rejected_mempool": "non-BIP68-final",
+    "tip_height": 208,
+    "tx": "timeout(early)",
+    "txid": "d05df16ae521c7eabaddcd73b2999ace18a7a6a67176fda956d50c85d009dfd4",
+    "vbytes": 179,
+    "weight": 716
+  },
+  "negative_kickoff_before_batch_height": {
+    "note": "nLockTime 203, the statement's batchHeight",
+    "rejected_block": "TestBlockValidity failed: bad-txns-nonfinal, non-final transaction",
+    "rejected_mempool": "non-final",
+    "tip_height": 201,
+    "tx": "kickoff(before batchHeight)",
+    "txid": "f991008c02d39ae7d0e2d41382f5b16e358ace38d82b2cb838b74d83c0c36f4a",
+    "vbytes": 298,
+    "weight": 1190
+  },
+  "negative_timeout_after_payout": {
+    "note": "T_assert reached; KA and KB already spent",
+    "rejected_block": "TestBlockValidity failed: bad-txns-inputs-missingorspent, CheckTxInputs: inputs missing/spent in transaction d05df16ae521c7eabaddcd73b2999ace18a7a6a67176fda956d50c85d009dfd4",
+    "rejected_mempool": "missing-inputs",
+    "tip_height": 215,
+    "tx": "timeout(after payout)",
+    "txid": "d05df16ae521c7eabaddcd73b2999ace18a7a6a67176fda956d50c85d009dfd4",
+    "vbytes": 179,
+    "weight": 716
+  },
+  "node_blockmintxfee": 1e-8,
+  "operator_back_sats": 10007674,
+  "payout_height_minus_kickoff_height": 6,
+  "payout_outputs_equal_template": true,
+  "reserve": {
+    "outpoint": "399fa95e75777748f52006a736a3cd23a21dad76dd6f8df4ec0fa68009c951d8:3",
+    "sats": 849702
+  },
+  "scenario": "unchallenged",
+  "setup": {
+    "a_outpoint": "e91d3352c76cce25acde2d5bf91f06b5b72ee3ca09d0e4ae8a112efa481d3c97:0",
+    "a_sats": 784,
+    "a_tree": {
+      "binding_leaves": 18,
+      "bitvm_leaf_bytes_total": 1289259813,
+      "bitvm_leaves": 432,
+      "depth": 9,
+      "leaves": 451
+    },
+    "assert_final_vbytes": 442,
+    "assert_init_fee_sats": 3834,
+    "challenge_signature_bytes": 65,
+    "commit_fees_sats": [
+      181596,
+      184780,
+      184780,
+      184780,
+      106284
+    ],
+    "commit_groups": [
+      9,
+      9,
+      9,
+      9,
+      6
+    ],
+    "committee_signatures": {
+      "assert_final (KA)": 1,
+      "challenge (SINGLE|ANYONECANPAY)": 1,
+      "disprove (SINGLE on KB, any leaf of A)": 1,
+      "payout_asserted": 5,
+      "payout_unchallenged": 6,
+      "timeout (SINGLE on KB, NONE on KA)": 2
+    },
+    "kb_sats": 10008414,
+    "kickoff_txid": "f991008c02d39ae7d0e2d41382f5b16e358ace38d82b2cb838b74d83c0c36f4a",
+    "kickoff_vbytes": 298,
+    "payout_asserted_vbytes": 692,
+    "payout_unchallenged_vbytes": 700,
+    "payout_version": 3,
+    "presigned_payout_asserted_txid": "4f040e39670e18342f91842338a5cc8218fff8bb03bde21d62c2e87bd06b2867",
+    "presigned_payout_unchallenged_txid": "89e3094af161c14f80ab69deec334bbb33707e9faca62ceaef0746ffc1beaf08"
+  },
+  "template_outputs": [
+    {
+      "payee": "seller-alice",
+      "role": "seller",
+      "sats": 1900000
+    },
+    {
+      "payee": "seller-bob",
+      "role": "seller",
+      "sats": 1800000
+    },
+    {
+      "payee": "seller-carol",
+      "role": "seller",
+      "sats": 450000
+    },
+    {
+      "payee": "refund-buyer1",
+      "role": "refund",
+      "sats": 330000
+    },
+    {
+      "payee": "refund-buyer2",
+      "role": "refund",
+      "sats": 82000
+    },
+    {
+      "payee": "refund-buyer3",
+      "role": "refund",
+      "sats": 43000
+    },
+    {
+      "payee": "operator-fee",
+      "role": "fee",
+      "sats": 45000
+    }
+  ],
+  "template_signals_differ_from_proof": [],
+  "timing": {
+    "assert_blocks": 3,
+    "margin": 2,
+    "slack_blocks": [
+      {
+        "blocks": 5,
+        "constraint": "challenge: blocks to get a challenge mined after the kickoff"
+      },
+      {
+        "blocks": 6,
+        "constraint": "unchallenged payout: blocks before the timeout opens"
+      },
+      {
+        "blocks": 3,
+        "constraint": "assert: blocks to spare after a last-block challenge"
+      },
+      {
+        "blocks": 6,
+        "constraint": "disprove: blocks to get a disprove mined after A"
+      },
+      {
+        "blocks": 7,
+        "constraint": "refund: blocks the latest payout has before refunds open"
+      }
+    ],
+    "t_assert": 12,
+    "t_challenge": 6,
+    "t_disprove": 6,
+    "t_kickoff": 6,
+    "t_refund": 30
+  },
+  "transactions": [
+    {
+      "note": "nLockTime 203, the statement's batchHeight",
+      "rejected_block": "TestBlockValidity failed: bad-txns-nonfinal, non-final transaction",
+      "rejected_mempool": "non-final",
+      "tip_height": 201,
+      "tx": "kickoff(before batchHeight)",
+      "txid": "f991008c02d39ae7d0e2d41382f5b16e358ace38d82b2cb838b74d83c0c36f4a",
+      "vbytes": 298,
+      "weight": 1190
+    },
+    {
+      "inputs": 2,
+      "mempool_now": "accepted",
+      "mined_height": 204,
+      "mined_via": "mempool",
+      "note": "bond -> KC + KA + KB + anchor",
+      "outputs": 4,
+      "tx": "kickoff",
+      "txid": "f991008c02d39ae7d0e2d41382f5b16e358ace38d82b2cb838b74d83c0c36f4a",
+      "vbytes": 298,
+      "weight": 1190
+    },
+    {
+      "note": "one block before T_challenge",
+      "rejected_block": "TestBlockValidity failed: bad-txns-nonfinal, contains a non-BIP68-final transaction 89e3094af161c14f80ab69deec334bbb33707e9faca62ceaef0746ffc1beaf08",
+      "rejected_mempool": "non-BIP68-final",
+      "tip_height": 208,
+      "tx": "payout_unchallenged(early)",
+      "txid": "89e3094af161c14f80ab69deec334bbb33707e9faca62ceaef0746ffc1beaf08",
+      "vbytes": 700,
+      "weight": 2798
+    },
+    {
+      "note": "before T_assert",
+      "rejected_block": "TestBlockValidity failed: bad-txns-nonfinal, contains a non-BIP68-final transaction d05df16ae521c7eabaddcd73b2999ace18a7a6a67176fda956d50c85d009dfd4",
+      "rejected_mempool": "non-BIP68-final",
+      "tip_height": 208,
+      "tx": "timeout(early)",
+      "txid": "d05df16ae521c7eabaddcd73b2999ace18a7a6a67176fda956d50c85d009dfd4",
+      "vbytes": 179,
+      "weight": 716
+    },
+    {
+      "inputs": 6,
+      "mempool_now": "accepted",
+      "mined_height": 210,
+      "mined_via": "mempool",
+      "note": "KC after T_challenge + KA + KB + every escrow",
+      "outputs": 8,
+      "tx": "payout_unchallenged",
+      "txid": "89e3094af161c14f80ab69deec334bbb33707e9faca62ceaef0746ffc1beaf08",
+      "vbytes": 700,
+      "weight": 2798
+    },
+    {
+      "note": "KC already spent",
+      "rejected_block": "TestBlockValidity failed: bad-txns-inputs-missingorspent, CheckTxInputs: inputs missing/spent in transaction 883e49a6307470e7f5b22f70c24f453c6a5e067ffc30ccfa32265b3f5ce6ab3a",
+      "rejected_mempool": "missing-inputs",
+      "tip_height": 210,
+      "tx": "challenge(after payout)",
+      "txid": "883e49a6307470e7f5b22f70c24f453c6a5e067ffc30ccfa32265b3f5ce6ab3a",
+      "vbytes": 212,
+      "weight": 847
+    },
+    {
+      "note": "T_assert reached; KA and KB already spent",
+      "rejected_block": "TestBlockValidity failed: bad-txns-inputs-missingorspent, CheckTxInputs: inputs missing/spent in transaction d05df16ae521c7eabaddcd73b2999ace18a7a6a67176fda956d50c85d009dfd4",
+      "rejected_mempool": "missing-inputs",
+      "tip_height": 215,
+      "tx": "timeout(after payout)",
+      "txid": "d05df16ae521c7eabaddcd73b2999ace18a7a6a67176fda956d50c85d009dfd4",
+      "vbytes": 179,
+      "weight": 716
+    }
+  ],
+  "watcher_check_pi_verifies_for_template": true
+}

@@ -17,6 +17,17 @@
 //!                             at the same rate, and only `unchallenged` and `challenged` apply
 //!   ZKC_VALIDATE=0            skip the challenger's BitVM validation in a `challenged` spike
 //! Results go to <work>/m2 for the M2 graph at FEE_RATE, else to <work>/m9/<graph>-<rate>.
+//!
+//! M13 adds:
+//!   ZKC_RISE_TO=<n> ZKC_RESTART_CMD=<script>   in a `challenged` spike, the market rises to n
+//!                             after assert_init's child is posted: `bash <script> <n>` restarts
+//!                             the node with -blockmintxfee at n, and the operator replaces the
+//!                             child by RBF and bumps the rest at n
+//!   ZKC_BIND_HEIGHT=1         the kickoff's lock time is the statement's batchHeight, it spends
+//!                             a deadline connector anyone may sweep after batchHeight + 4, and
+//!                             the escrows refund through CLTV at an absolute expiry. Adds the
+//!                             scenario `late`: the deadline passes before any kickoff
+//! Their results go to <work>/m13/<graph>-<rate>[-to-<n>][-bound].
 
 #[allow(dead_code)]
 #[path = "../../m1/src/chunked.rs"]
@@ -57,12 +68,26 @@ const BUMP_COINS: usize = 9;
 const INCREMENTAL_RELAY_SAT_PER_KVB: u64 = 100;
 /// TRUC's cap on a child of an unconfirmed version 3 transaction.
 const TRUC_CHILD_MAX_VSIZE: usize = 1000;
+/// Bound runs (M13): the statement's batchHeight, in blocks after the escrows' funding block.
+/// The kickoff's lock time keeps it out of blocks up to this height.
+const BATCH_HEIGHT_AFTER_FUNDING: u64 = 2;
+/// Bound runs: the deadline connector opens to anyone this many blocks after batchHeight, so
+/// the kickoff has to confirm in blocks batchHeight + 1 to batchHeight + DEADLINE_AFTER_BATCH.
+const DEADLINE_AFTER_BATCH: u64 = 4;
+/// The deadline connector's value: what its sweeper keeps.
+const DEADLINE_SATS: u64 = 10_000;
 
 /// How a run is configured (module docs).
 struct Run {
     graph: Graph,
     market: u64,
     validate: bool,
+    /// M13: the market rises to this rate (sat/vB) after assert_init's child is posted, by
+    /// restarting the node through `restart`.
+    rise: Option<(u64, String)>,
+    /// M13: the kickoff carries the statement's batchHeight as its lock time, and each escrow
+    /// refunds through CLTV at its absolute expiry.
+    bound: bool,
 }
 
 impl Run {
@@ -75,7 +100,13 @@ impl Run {
         let market = std::env::var("ZKC_MARKET_FEE_RATE").map(|v| v.parse().expect("ZKC_MARKET_FEE_RATE")).unwrap_or(FEE_RATE);
         assert!(market >= FEE_RATE, "the market rate must be at least the presigned FEE_RATE");
         let validate = std::env::var("ZKC_VALIDATE").as_deref() != Ok("0");
-        Run { graph, market, validate }
+        let rise = std::env::var("ZKC_RISE_TO").ok().map(|v| {
+            let rate: u64 = v.parse().expect("ZKC_RISE_TO");
+            assert!(rate > market, "ZKC_RISE_TO must be above the market rate");
+            (rate, std::env::var("ZKC_RESTART_CMD").expect("ZKC_RISE_TO needs ZKC_RESTART_CMD"))
+        });
+        let bound = std::env::var("ZKC_BIND_HEIGHT").as_deref() == Ok("1");
+        Run { graph, market, validate, rise, bound }
     }
 
     fn spike(&self) -> bool {
@@ -83,11 +114,18 @@ impl Run {
     }
 
     fn results_dir(&self, work: &Path) -> PathBuf {
-        if self.graph == Graph::M2 && !self.spike() {
-            work.join("m2")
-        } else {
-            work.join("m9").join(format!("{}-{}", self.graph.name(), self.market))
+        if self.graph == Graph::M2 && !self.spike() && self.rise.is_none() && !self.bound {
+            return work.join("m2");
         }
+        let mut name = format!("{}-{}", self.graph.name(), self.market);
+        if let Some((rate, _)) = &self.rise {
+            name += &format!("-to-{rate}");
+        }
+        if self.bound {
+            name += "-bound";
+        }
+        let milestone = if self.rise.is_some() || self.bound { "m13" } else { "m9" };
+        work.join(milestone).join(name)
     }
 }
 
@@ -254,8 +292,9 @@ impl Trace {
 /// (-blockmintxfee), without mining a block. Core keeps serving its last template for a few
 /// seconds after the mempool changes. Every call here follows a change, so it waits for a
 /// template whose `longpollid` (tip and mempool update count) differs from the previous one.
+static LAST_ID: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+
 fn in_template(rpc: &rpc::Rpc, t: &Transaction) -> bool {
-    static LAST_ID: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
     let mut last = LAST_ID.lock().unwrap();
     let mut template = rpc.call("getblocktemplate", json!([{"rules": ["segwit"]}]));
     for _ in 0..30 {
@@ -286,11 +325,31 @@ fn outbid(fee: u64, vsize: usize) -> u64 {
     fee + (INCREMENTAL_RELAY_SAT_PER_KVB * vsize as u64).div_ceil(1000) + 1
 }
 
+/// Restarts the node through `cmd <rate>` with -blockmintxfee at `rate` (the market rises), and
+/// waits until it answers with the mempool it saved at shutdown loaded again.
+fn restart_node(rpc: &rpc::Rpc, cmd: &str, rate: u64) {
+    let status = std::process::Command::new("bash").arg(cmd).arg(rate.to_string()).status().expect("restart command");
+    assert!(status.success(), "restart command failed: {status}");
+    for _ in 0..120 {
+        if let Ok(info) = rpc.try_call("getmempoolinfo", json!([])) {
+            if info["loaded"].as_bool() == Some(true) {
+                // A new process numbers its templates afresh.
+                LAST_ID.lock().unwrap().clear();
+                return;
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_secs(1));
+    }
+    panic!("the node did not come back after the restart");
+}
+
 /// The operator's confirmed coins for CPFP children, one per child.
 struct Bumper {
     coins: Vec<(Utxo, bitcoin::key::Keypair)>,
     rate: u64,
     paid: u64,
+    /// The coin each child spent, by the child's txid, so that RBF can reuse it.
+    spent: Vec<(bitcoin::Txid, Utxo, bitcoin::key::Keypair)>,
 }
 
 impl Bumper {
@@ -301,6 +360,20 @@ impl Bumper {
         let parent_fee = mempool_fee(rpc, parent);
         let child = bump_child(keys, parent, parent_fee, handle, handle_signer, &coin, &signer, self.rate, min_fee, keys.operator_script());
         self.paid += handle.sats() + coin.sats() - child.output[0].value.to_sat();
+        self.spent.push((child.compute_txid(), coin, signer));
+        child
+    }
+
+    /// An RBF replacement of `old`, a child of `parent`: the same handle and coin, carrying the
+    /// package to the current rate and outbidding `old` by the incremental relay fee.
+    fn replace(&mut self, keys: &Keys, rpc: &rpc::Rpc, parent: &Transaction, handle: &Utxo, handle_signer: &bitcoin::key::Keypair, old: &Transaction) -> Transaction {
+        let index = self.spent.iter().position(|(txid, _, _)| *txid == old.compute_txid()).expect("not a child of this bumper");
+        let (_, coin, signer) = self.spent.remove(index);
+        let old_fee = handle.sats() + coin.sats() - old.output[0].value.to_sat();
+        let parent_fee = mempool_fee(rpc, parent);
+        let child = bump_child(keys, parent, parent_fee, handle, handle_signer, &coin, &signer, self.rate, outbid(old_fee, old.vsize()), keys.operator_script());
+        self.paid += handle.sats() + coin.sats() - child.output[0].value.to_sat() - old_fee;
+        self.spent.push((child.compute_txid(), coin, signer));
         child
     }
 }
@@ -424,7 +497,8 @@ fn timing() -> Value {
 }
 
 fn scenario(inp: &Inputs, run: &Run, name: &str) {
-    const NAMES: [&str; 6] = ["unchallenged", "challenged", "tampered", "silent", "incomplete", "stall"];
+    const NAMES: [&str; 7] = ["unchallenged", "challenged", "tampered", "silent", "incomplete", "stall", "late"];
+    assert!(name != "late" || run.bound, "`late` needs ZKC_BIND_HEIGHT=1");
     assert!(NAMES.contains(&name), "unknown scenario {name}; one of {NAMES:?}");
     assert!(!run.spike() || matches!(name, "unchallenged" | "challenged"), "a fee spike applies to `unchallenged` and `challenged` only");
     let rpc = rpc_from_env();
@@ -466,7 +540,13 @@ fn scenario(inp: &Inputs, run: &Run, name: &str) {
 
     // Funding, in one block: an escrow per active buyer, the operator's bond and assert
     // reserve, a coin a challenger will spend, and in a spike the operator's bump coins.
-    let mut escrows: Vec<Escrow> = tpl.escrows.iter().map(|s| Escrow::new(&keys, &s.buyer)).collect();
+    // Bound (M13): the funding block is the next one. Each escrow refunds through CLTV at an
+    // absolute expiry that opens in the same block as M2's CSV refund (h_e + T_REFUND), and the
+    // statement's batchHeight is h_e + BATCH_HEIGHT_AFTER_FUNDING.
+    let h_e_expected = rpc.height() + 1;
+    let escrow_expiry = run.bound.then(|| (h_e_expected + u64::from(T_REFUND) - 1) as u32);
+    let batch_height = run.bound.then(|| (h_e_expected + BATCH_HEIGHT_AFTER_FUNDING) as u32);
+    let mut escrows: Vec<Escrow> = tpl.escrows.iter().map(|s| Escrow::new(&keys, &s.buyer, escrow_expiry)).collect();
     let challenger = keypair(&keys.secp, "challenger");
     let challenger_script = payee_script(&keys, "challenger");
     let mut outs: Vec<(ScriptBuf, u64)> = escrows.iter().zip(&tpl.escrows).map(|(e, s)| (e.tree.script_pubkey(), s.amount)).collect();
@@ -474,10 +554,16 @@ fn scenario(inp: &Inputs, run: &Run, name: &str) {
     outs.push((key_path_script(&keys.secp, "operator-reserve"), layout.reserve()));
     outs.push((challenger_script.clone(), challenge_amount + CHALLENGER_COIN_EXTRA));
     let bump_coins = if run.spike() { BUMP_COINS } else { 0 };
-    // Enough for a child that carries a 100 kvB parent to the market rate.
-    let bump_coin_sats = market * 100_000 + 20_000;
+    // Enough for a child that carries a 100 kvB parent to the market rate, or to the rate it
+    // rises to.
+    let bump_coin_sats = run.rise.as_ref().map_or(market, |(rate, _)| *rate) * 100_000 + 20_000;
     for i in 0..bump_coins {
         outs.push((key_path_script(&keys.secp, &format!("operator-bump-{i}")), bump_coin_sats));
+    }
+    // Bound: the deadline connector the kickoff must spend before anyone sweeps it.
+    let mut deadline = batch_height.map(|h| Deadline::new(&keys, h + DEADLINE_AFTER_BATCH as u32));
+    if let Some(d) = &deadline {
+        outs.push((d.tree.script_pubkey(), DEADLINE_SATS));
     }
     let funded = fund_many(&rpc, &outs, &miner);
     for (e, u) in escrows.iter_mut().zip(&funded) {
@@ -485,12 +571,20 @@ fn scenario(inp: &Inputs, run: &Run, name: &str) {
     }
     let n = escrows.len();
     let (bond, reserve, challenger_coin) = (funded[n].clone(), funded[n + 1].clone(), funded[n + 2].clone());
+    if let Some(d) = deadline.as_mut() {
+        d.utxo = funded[n + 3 + bump_coins].clone();
+    }
     let mut bumper = Bumper {
         coins: (0..bump_coins).map(|i| (funded[n + 3 + i].clone(), keypair(&keys.secp, &format!("operator-bump-{i}")))).collect(),
         rate: market,
         paid: 0,
+        spent: vec![],
     };
     let h_e = rpc.height();
+    assert_eq!(h_e, h_e_expected, "funding confirmed in an unexpected block");
+    facts["batch_height"] = json!(batch_height);
+    facts["escrow_expiry_height"] = json!(escrow_expiry);
+    facts["deadline"] = json!(deadline.as_ref().map(|d| json!({"height": d.height, "sats": d.utxo.sats(), "outpoint": d.utxo.outpoint.to_string()})));
     facts["escrows"] = json!(escrows.iter().map(|e| json!({"buyer": e.buyer, "outpoint": e.utxo.outpoint.to_string(), "sats": e.utxo.sats()})).collect::<Vec<_>>());
     facts["funded_height"] = json!(h_e);
     facts["bond_outpoint"] = json!(bond.outpoint.to_string());
@@ -516,7 +610,8 @@ fn scenario(inp: &Inputs, run: &Run, name: &str) {
     // Setup, all off chain: the kickoff, A's script tree, the assert chain and every presigned
     // committee signature. The kickoff's txid is fixed before presigning, so its fee is too:
     // FEE_RATE in the anchored graph, which can bump it, and the market rate in the M2 graph.
-    let kickoff = kickoff_tx(&keys, &bond, run.graph, if run.graph.anchored() { FEE_RATE } else { market });
+    let lock_time = batch_height.map(|h| bitcoin::absolute::LockTime::from_height(h).unwrap()).unwrap_or(bitcoin::absolute::LockTime::ZERO);
+    let kickoff = kickoff_tx(&keys, &bond, run.graph, if run.graph.anchored() { FEE_RATE } else { market }, lock_time, deadline.as_ref());
     let challenge_sig = challenge_signature(&keys, &kickoff.kc, challenge_amount);
     let escrow_inputs = |inputs: &mut Vec<PayoutInput>| {
         for e in &escrows {
@@ -588,6 +683,34 @@ fn scenario(inp: &Inputs, run: &Run, name: &str) {
         },
         "challenge_signature_bytes": s.challenge_sig.len(),
     });
+
+    // Bound: the kickoff cannot be mined until the block after batchHeight.
+    if let Some(height) = batch_height {
+        facts["negative_kickoff_before_batch_height"] =
+            trace.reject(&rpc, &miner, "kickoff(before batchHeight)", &s.kickoff.tx, &format!("nLockTime {height}, the statement's batchHeight"));
+        mine_to_tip(&rpc, &miner, u64::from(height));
+    }
+
+    if name == "late" {
+        // The operator does not kick off by the deadline. Anyone sweeps the deadline connector
+        // in the first block it may, and the kickoff can never confirm after that. Buyers
+        // refund at their escrows' expiry.
+        let d = deadline.as_ref().unwrap();
+        let sweeper = payee_script(&keys, "deadline-sweeper");
+        let sweep = sweep_deadline_tx(&keys, d, sweeper, market);
+        mine_to_tip(&rpc, &miner, u64::from(d.height) - 1);
+        facts["negative_sweep_before_deadline"] = trace.reject(&rpc, &miner, "sweep(before deadline)", &sweep, &format!("nLockTime {}", d.height));
+        mine_to_tip(&rpc, &miner, u64::from(d.height));
+        trace.record(&rpc, "sweep", &sweep, "the deadline connector through its CLTV leaf, by anyone").expect("sweep standard");
+        trace.mine(&rpc, &miner, &[("sweep", &sweep)]);
+        facts["sweeper_sats"] = json!(sweep.output[0].value.to_sat());
+        facts["negative_kickoff_after_sweep"] = trace.reject(&rpc, &miner, "kickoff(after deadline)", &s.kickoff.tx, "the deadline connector is spent");
+        refunds(&rpc, &miner, &keys, &mut trace, &escrows, &refund_payee, &mut facts, market);
+        let unspent = |u: &Utxo| !rpc.call("gettxout", json!([u.outpoint.txid.to_string(), u.outpoint.vout])).is_null();
+        facts["bond_unspent"] = json!(unspent(&bond));
+        finish(inp, run, name, &trace, &mut facts);
+        return;
+    }
 
     // The kickoff: in a spike the anchored graph carries it with a child through its anchor.
     if run.spike() && run.graph.anchored() {
@@ -673,7 +796,7 @@ fn scenario(inp: &Inputs, run: &Run, name: &str) {
             let plan = CommitPlan { batches: &batches, leaves: &commit_leaves, trees: &commit_trees, items: &items };
             let commits = signed_commits(&keys, &s.chain, &plan);
             if run.spike() {
-                post_assert_chain_bumped(&rpc, &miner, &mut trace, &mut bumper, &keys, &s.chain, &commits);
+                post_assert_chain_bumped(&rpc, &miner, &mut trace, &mut bumper, &keys, &s.chain, &commits, run.rise.as_ref(), &mut facts);
             } else {
                 post_assert_chain(&rpc, &miner, &mut trace, &s.chain, &commits, name == "challenged", &mut facts);
                 trace.record(&rpc, "assert_final", &s.chain.assert_final, "KA + every D_k -> A").expect("assert_final standard");
@@ -900,11 +1023,44 @@ fn pin_payout(rpc: &rpc::Rpc, keys: &Keys, trace: &mut Trace, payout: &Transacti
 }
 
 /// Posts the anchored assert chain in a spike, each transaction with the operator's CPFP child
-/// through its anchor, in the same three blocks as at FEE_RATE.
-fn post_assert_chain_bumped(rpc: &rpc::Rpc, miner: &Address, trace: &mut Trace, bumper: &mut Bumper, keys: &Keys, chain: &AssertChain, commits: &[Transaction]) {
+/// through its anchor, in the same three blocks as at FEE_RATE. With `rise` (M13), the market
+/// rises after assert_init's child is posted: the node restarts at the new rate, and the
+/// operator replaces that child by RBF and bumps the rest of the chain at the new rate.
+#[allow(clippy::too_many_arguments)]
+fn post_assert_chain_bumped(
+    rpc: &rpc::Rpc,
+    miner: &Address,
+    trace: &mut Trace,
+    bumper: &mut Bumper,
+    keys: &Keys,
+    chain: &AssertChain,
+    commits: &[Transaction],
+    rise: Option<&(u64, String)>,
+    facts: &mut Value,
+) {
     let anchor_key = keys.anchor_keypair();
     let init = &chain.assert_init;
-    let (child_name, child) = post_bumped(rpc, trace, bumper, keys, "assert_init", init, "reserve -> commit outputs + anchor", (&anchor_of(init), &anchor_key));
+    let (mut child_name, mut child) = post_bumped(rpc, trace, bumper, keys, "assert_init", init, "reserve -> commit outputs + anchor", (&anchor_of(init), &anchor_key));
+    if let Some((rate, cmd)) = rise {
+        restart_node(rpc, cmd, *rate);
+        bumper.rate = *rate;
+        let kept = in_mempool(rpc, init) && in_mempool(rpc, &child);
+        let carried = in_template(rpc, init);
+        eprintln!("  market now {rate} sat/vB: assert_init and child in the mempool {kept}, in the template {carried}");
+        let replacement = bumper.replace(keys, rpc, init, &anchor_of(init), &anchor_key, &child);
+        let name = "assert_init+cpfp(rbf)";
+        let verdict = trace.send(rpc, name, &replacement, &format!("RBF of the operator's child at {rate} sat/vB"));
+        facts["rise"] = json!({
+            "to_sat_per_vb": rate,
+            "assert_init_and_child_in_mempool_after_restart": kept,
+            "assert_init_in_template_with_old_child": carried,
+            "replacement": verdict.clone().map(|()| "accepted".to_string()).unwrap_or_else(|e| e),
+            "old_child_in_mempool_after_replacement": in_mempool(rpc, &child),
+            "assert_init_in_template_with_replacement": in_template(rpc, init),
+        });
+        verdict.unwrap_or_else(|e| panic!("{name} refused: {e}"));
+        (child_name, child) = (name.to_string(), replacement);
+    }
     trace.mine_mempool(rpc, miner, &[("assert_init", init), (&child_name, &child)]);
 
     let names: Vec<String> = (0..commits.len()).map(|k| format!("commit[{k}]")).collect();

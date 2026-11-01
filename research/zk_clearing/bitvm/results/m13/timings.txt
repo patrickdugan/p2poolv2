@@ -1,0 +1,6 @@
+M13 run times (/usr/bin/time), 2026-11-01, Bitcoin Core v31.1.0 regtest, WSL2 Ubuntu 24.04.
+m13-bound.log:scenario bound unchallenged: 39.66 s, 3448068 KiB max RSS
+m13-bound.log:scenario bound silent: 48.06 s, 3447232 KiB max RSS
+m13-bound.log:scenario bound stall: 3.04 s, 11832 KiB max RSS
+m13-bound.log:scenario bound late: 53.95 s, 3447784 KiB max RSS
+m13-rise.log:scenario rise challenged: 122.25 s, 3448012 KiB max RSS

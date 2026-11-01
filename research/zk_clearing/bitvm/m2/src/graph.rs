@@ -39,7 +39,7 @@
 
 use bitcoin::hashes::Hash;
 use bitcoin::key::{Keypair, Secp256k1, TapTweak};
-use bitcoin::opcodes::all::{OP_CHECKSIG, OP_CSV, OP_DROP, OP_RETURN};
+use bitcoin::opcodes::all::{OP_CHECKSIG, OP_CLTV, OP_CSV, OP_DROP, OP_RETURN};
 use bitcoin::script::Builder;
 use bitcoin::secp256k1::{All, Message, XOnlyPublicKey};
 use bitcoin::sighash::{Prevouts, SighashCache, TapSighashType};
@@ -176,6 +176,17 @@ pub fn csv_checksig(blocks: u16, key: &XOnlyPublicKey) -> ScriptBuf {
         .into_script()
 }
 
+/// `<height> OP_CLTV OP_DROP <key> OP_CHECKSIG`: spendable by `key` from block `height + 1`.
+pub fn cltv_checksig(height: u32, key: &XOnlyPublicKey) -> ScriptBuf {
+    Builder::new()
+        .push_int(i64::from(height))
+        .push_opcode(OP_CLTV)
+        .push_opcode(OP_DROP)
+        .push_x_only_key(key)
+        .push_opcode(OP_CHECKSIG)
+        .into_script()
+}
+
 /// The burn output's script: a bare OP_RETURN, unspendable.
 pub fn burn_script() -> ScriptBuf {
     Builder::new().push_opcode(OP_RETURN).into_script()
@@ -257,27 +268,41 @@ impl Utxo {
 }
 
 /// Escrow output for one buyer: the committee's key path pays out, the buyer's leaf refunds.
+/// The refund opens T_REFUND blocks after funding (CSV), or with `expiry` (M13) after an
+/// absolute height: the escrow expiry the buyer signed, enforced by CLTV.
 pub struct Escrow {
     pub buyer: String,
     pub refund_leaf: ScriptBuf,
+    pub expiry: Option<u32>,
     pub tree: ScriptTree,
     pub utxo: Utxo,
 }
 
 impl Escrow {
-    pub fn new(keys: &Keys, buyer: &str) -> Escrow {
-        let refund_leaf = csv_checksig(T_REFUND, &xonly(&keys.secp, &format!("buyer:{buyer}")));
+    pub fn new(keys: &Keys, buyer: &str, expiry: Option<u32>) -> Escrow {
+        let key = xonly(&keys.secp, &format!("buyer:{buyer}"));
+        let refund_leaf = match expiry {
+            Some(height) => cltv_checksig(height, &key),
+            None => csv_checksig(T_REFUND, &key),
+        };
         let tree = ScriptTree::with_internal_key(&keys.secp, keys.x(&keys.committee), vec![leaf_hash(&refund_leaf)]);
-        Escrow { buyer: buyer.to_string(), refund_leaf, tree, utxo: Utxo { outpoint: OutPoint::null(), txout: txout(0, ScriptBuf::new()) } }
+        Escrow { buyer: buyer.to_string(), refund_leaf, expiry, tree, utxo: Utxo { outpoint: OutPoint::null(), txout: txout(0, ScriptBuf::new()) } }
     }
 }
 
-/// The buyer's refund after T_refund, paying `to` (the buyer's refund payee). The buyer signs
-/// it when posting, at the market fee `rate`.
+/// The buyer's refund after T_refund or the escrow's expiry, paying `to` (the buyer's refund
+/// payee). The buyer signs it when posting, at the market fee `rate`.
 pub fn refund_tx(keys: &Keys, escrow: &Escrow, to: ScriptBuf, rate: u64) -> Transaction {
     let buyer = keypair(&keys.secp, &format!("buyer:{}", escrow.buyer));
     let build = |value: u64| {
-        let mut t = tx(vec![(escrow.utxo.outpoint, Sequence::from_height(T_REFUND))], vec![txout(value, to.clone())]);
+        let mut t = match escrow.expiry {
+            Some(height) => {
+                let mut t = tx(vec![(escrow.utxo.outpoint, RBF)], vec![txout(value, to.clone())]);
+                t.lock_time = LockTime::from_height(height).expect("block height lock time");
+                t
+            }
+            None => tx(vec![(escrow.utxo.outpoint, Sequence::from_height(T_REFUND))], vec![txout(value, to.clone())]),
+        };
         let sig = sign_script_path(keys, &buyer, &t, &[escrow.utxo.txout.clone()], 0, &escrow.refund_leaf);
         t.input[0].witness = script_path_witness(vec![sig], &escrow.refund_leaf, &escrow.tree, 0, keys);
         t
@@ -286,8 +311,42 @@ pub fn refund_tx(keys: &Keys, escrow: &Escrow, to: ScriptBuf, rate: u64) -> Tran
     build(escrow.utxo.sats() - fee_at(&draft, rate))
 }
 
+/// M13's deadline connector: an output the kickoff must spend (operator key path), which anyone
+/// may spend after `height` through the leaf `<height> OP_CLTV`. Once someone has, the kickoff
+/// can no longer confirm, so the graph has to start by `height`. Whoever sweeps it keeps its
+/// value, which is what pays miners and watchers to do so.
+pub struct Deadline {
+    pub height: u32,
+    pub leaf: ScriptBuf,
+    pub tree: ScriptTree,
+    pub utxo: Utxo,
+}
+
+impl Deadline {
+    pub fn new(keys: &Keys, height: u32) -> Deadline {
+        let leaf = Builder::new().push_int(i64::from(height)).push_opcode(OP_CLTV).into_script();
+        let tree = ScriptTree::with_internal_key(&keys.secp, keys.x(&keys.operator), vec![leaf_hash(&leaf)]);
+        Deadline { height, leaf, tree, utxo: Utxo { outpoint: OutPoint::null(), txout: txout(0, ScriptBuf::new()) } }
+    }
+}
+
+/// Anyone's sweep of a deadline connector after its height, paying `to` at the fee `rate`.
+pub fn sweep_deadline_tx(keys: &Keys, deadline: &Deadline, to: ScriptBuf, rate: u64) -> Transaction {
+    let build = |value: u64| {
+        let mut t = tx(vec![(deadline.utxo.outpoint, RBF)], vec![txout(value, to.clone())]);
+        t.lock_time = LockTime::from_height(deadline.height).expect("block height lock time");
+        t.input[0].witness = script_path_witness(vec![], &deadline.leaf, &deadline.tree, 0, keys);
+        t
+    };
+    let draft = build(deadline.utxo.sats());
+    build(deadline.utxo.sats() - fee_at(&draft, rate))
+}
+
 /// The operator's kickoff: bond -> KC, KA, KB, and in the anchored graph an operator-keyed
 /// anchor. Its txid is fixed before the committee presigns, so its fee is fixed too.
+/// M13: a nonzero `lock_time` (the statement's batchHeight) keeps it, and so the whole graph,
+/// out of every block up to that height, and spending a `deadline` connector keeps it out of
+/// every block after someone has swept the connector.
 pub struct Kickoff {
     pub tx: Transaction,
     pub kc: Utxo,
@@ -296,21 +355,33 @@ pub struct Kickoff {
     pub anchor: Option<Utxo>,
 }
 
-pub fn kickoff_tx(keys: &Keys, bond: &Utxo, graph: Graph, rate: u64) -> Kickoff {
+pub fn kickoff_tx(keys: &Keys, bond: &Utxo, graph: Graph, rate: u64, lock_time: LockTime, deadline: Option<&Deadline>) -> Kickoff {
     let committee = keys.committee_script();
     let anchor = if graph.anchored() { ANCHOR } else { 0 };
+    let mut inputs = vec![bond.clone()];
+    inputs.extend(deadline.map(|d| d.utxo.clone()));
+    let prevouts: Vec<TxOut> = inputs.iter().map(|u| u.txout.clone()).collect();
+    let total: u64 = inputs.iter().map(Utxo::sats).sum();
     let build = |kb_value: u64| {
         let mut outs = vec![txout(CONNECTOR, committee.clone()), txout(CONNECTOR, committee.clone()), txout(kb_value, committee.clone())];
         if graph.anchored() {
             outs.push(txout(ANCHOR, keys.anchor_script()));
         }
-        let mut t = tx(vec![(bond.outpoint, RBF)], outs);
-        let sig = sign_key_path(keys, &keys.operator, &t, &Prevouts::All(&[bond.txout.clone()]), 0, TapSighashType::Default, None);
-        t.input[0].witness = Witness::from_slice(&[sig]);
+        let mut t = tx(inputs.iter().map(|u| (u.outpoint, RBF)).collect(), outs);
+        t.lock_time = lock_time;
+        let sigs: Vec<Vec<u8>> = (0..inputs.len())
+            .map(|i| {
+                let root = if i == 0 { None } else { Some(deadline.unwrap().tree.merkle_root()) };
+                sign_key_path(keys, &keys.operator, &t, &Prevouts::All(&prevouts), i, TapSighashType::Default, root)
+            })
+            .collect();
+        for (input, sig) in t.input.iter_mut().zip(sigs) {
+            input.witness = Witness::from_slice(&[sig]);
+        }
         t
     };
-    let draft = build(bond.sats() - 2 * CONNECTOR - anchor);
-    let t = build(bond.sats() - 2 * CONNECTOR - anchor - fee_at(&draft, rate));
+    let draft = build(total - 2 * CONNECTOR - anchor);
+    let t = build(total - 2 * CONNECTOR - anchor - fee_at(&draft, rate));
     Kickoff { kc: Utxo::of(&t, 0), ka: Utxo::of(&t, 1), kb: Utxo::of(&t, 2), anchor: graph.anchored().then(|| Utxo::of(&t, 3)), tx: t }
 }
 
