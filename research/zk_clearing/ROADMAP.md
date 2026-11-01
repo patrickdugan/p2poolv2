@@ -1,6 +1,6 @@
 # Roadmap: proof-backed share clearing
 
-Written 2026-11-01 after M1; M2 to M8 were executed the same day. This file is the status.
+Written 2026-11-01 after M1; M2 to M12 were executed the same day. This file is the status.
 
 **The question.** Can batched, proof-backed clearing of share sales between miners and market
 makers beat P2Poolv2's bilateral atomic swaps on cost or on guarantees?
@@ -31,6 +31,10 @@ on-chain fees are low.
 | M6 | Batch size, with a binary Poseidon tree commitment at 16, 64, 256 and 1,024 slots. Every size proves and verifies. About 700 constraints and 34 ms of snarkjs proving per sale from 64 slots up; 1,024 sales prove in 35 s with 6.6 GiB | [scaling/SCALING.md](scaling/SCALING.md) |
 | M7 | The benchmark: 10,000 offers, 100 miners, 5 market makers, three schemes. Batch clearing beats Lightning only for about daily 1,024-sale batches, below about 3.4–7.8 sat/vB (or 15–34 against week-sized channels). It locks 12–94 BTC·h a week against Lightning's 2,794. Bilateral swaps cost 245–310 vB per sale | [benchmark/BENCHMARK.md](benchmark/BENCHMARK.md) |
 | M8 | For the mode M7 kept: a multi-party phase-2 ceremony script (3 contributors + beacon verified); a TRUC + pay-to-anchor fee bump verified on Core 31.1, so a low-fee child cannot pin; and a fee and pinning plan for every transaction in M2's graph. M2 and M3 already ran under mainnet relay policy (regtest requires standard transactions), with the disproves mined through a miner's own template; what only signet adds is listed in M8 section 5 | [m8/M8.md](m8/M8.md) |
+| M9 | Fee bumping in M2's graph: TRUC payouts with the operator's back output as the handle, operator-keyed anchors on the kickoff and the assert chain, and a challenge priced at the assert's cost at 10 sat/vB. In a 10 sat/vB spike on regtest, **M2's graph slashed an honest operator on both paths**: a payee pinned the payout with 63 children and posted the timeout itself, and the assert chain never entered a template. **The anchored graph settled both**, on the same timeline. M2's six scenarios rerun on it with the same outcomes, at +43 vB per anchor (honest path 940 vB) | [bitvm/M9.md](bitvm/M9.md) |
+| M10 | Ownership joined to signed orders. A share address's key registers a BabyJubjub order key with BIP340; the tree stores the key's hash as the owner; one circuit (291,792 constraints) proves M4's signatures and M5's membership for the same seller. Proves in 11.8 s; a seller selling with an unregistered, rotated-out or someone else's key is refused in the membership check | [joined/JOINED.md](joined/JOINED.md) |
+| M11 | M4's signatures on M6's tree behind one hashed public input, at 16, 64 and 128 slots. 128 sales: 760,801 constraints, prove 19–50 s and 6.8 GiB in snarkjs. Signatures are 87% of the circuit, 4,852 constraints per sale. 1,024 sales: about 5.76 M constraints, phase-1 power 23, 30–51 GiB to prove, *est.* | [signedtree/SIGNED_TREE.md](signedtree/SIGNED_TREE.md) |
+| M12 | Every disprove weighed: 430 of 432 are over the relay limit, none is over a default block template (the heaviest is 3,960,303 WU, 31,697 under it). BLAKE3 in Script costs 232 kB per hash of BitVM's Fp12 state, so pairing leaves cannot be cut under the relay limit. The disprove window has to come from the hashrate that accepts non-standard transactions: 135 blocks at 5%, 688 at 1% (ε = 10⁻³) | [bitvm/M12.md](bitvm/M12.md) |
 
 What M1 taught:
 
@@ -78,35 +82,64 @@ What M3 to M8 taught:
 - **The assert chain needs keyed anchors (M8).** Its commit transactions (53–92 kvB) are too
   large for TRUC, so they cannot use keyless pay-to-anchor bumping.
 
+What M9 to M12 taught:
+
+- **Frozen fees are a safety bug, not a cost (M9).**
+  - In a spike, M2's version 2 payout could be pinned by any payee with 63 cheap children. The
+    pinning payee then posted the timeout and took half the bond, 4.99 M sats, against a 43,000
+    sat payout.
+  - TRUC bounds the pin: one child of at most 1,000 vB, which the operator evicts.
+  - The kickoff's fee is fixed at presigning too, so it needs an anchor.
+- **The challenge has to pay for the assert at the highest fee rate the mode accepts (M9).**
+  Otherwise an honest operator who is challenged in a spike pays for its own CPFP. At 10 sat/vB
+  that is a 4.25 M sat challenge, five times M2's, which also makes griefing five times dearer.
+- **Registration is the bridge between a sharechain address and an order key (M10).** The
+  circuit needs no secp256k1. The root becomes a function of the sharechain and of the
+  registrations, so watchers have to agree on both.
+- **Signatures, not the tree, dominate the signed circuit (M11).** 87% at every size. A day's
+  1,024 sales need phase-1 power 23 and 30–51 GiB for snarkjs, *est.*
+- **The disprove route is through miners (M12).** The pairing leaves cannot be cut under the
+  relay limit, because hashing their state costs 232 kB of script per side. T_disprove has to be
+  set from the hashrate share that accepts non-standard transactions. The heaviest disprove
+  fills 99% of a block, so a 1% larger leaf would not fit a default template.
+
 ## Remaining work
+
+Done since the first version of this list: anchors in M2's graph (M9), the signed tree at scale
+(M11), M5 joined to M4 (M10), and the disprove route (M12).
 
 Engineering that can be done next without anyone else:
 
-1. **Anchors in M2's graph.** TRUC + pay-to-anchor on both payouts; operator-keyed anchors on the
-   assert chain (M8's table). Re-run M2's scenarios with a fee spike.
-2. **The signed tree circuit at scale.** M4's signatures on M6's tree, with M3's single input.
-   A 1,024-slot signed batch is about 5.8 M constraints *est.*, so measure it with rapidsnark,
-   which was not built here: the delegated build was refused by the tool policy.
-3. **M5 joined to M4.** Store each order key's hash as the output's owner, so ownership and
-   signature checks meet in one statement.
-4. **A disprove path that relays.** Shrink BitVM leaves under the standardness limit, or document
-   the route to a miner (M8 section 3).
+1. **The joined statement at scale.** M10's membership on M11's tree costs about 17,000
+   constraints per sale (5,600 for the signed tree, 11,400 for the membership), so 1,024 sales
+   come to about 17.5 M constraints and phase-1 power 25, *est.* A cheaper membership proof is the next step: a shallower tree for the live window
+   (M5 section 6), or one root per seller.
+2. **BitVM on M11's statement.** Port M11's chunked Poseidon to the Rust template, and rerun
+   M3's scenarios with a signed-tree proof.
+3. **Bind `batchHeight` to the chain.** For example a CLTV on the kickoff, so the expiry checks of
+   M4 and M11 refer to the real height.
+4. **Rising fees during an assert.** Replace the bump children by RBF as the market climbs. M9
+   ran a constant spike only.
 
 Waiting on Patrick or third parties (details in M8):
 
-- a public phase-1 file (Perpetual Powers of Tau) instead of the insecure local one;
+- a public phase-1 file (Perpetual Powers of Tau) instead of the insecure local one, at power 23
+  or more for a day's signed batch;
 - independent ceremony contributors and n-of-n committee signers. A MuSig2 aggregate key is
   one BIP340 key on chain, so M2's traces already cover the chain side; what is missing is
   independent people;
 - signet coins and a P2Poolv2 signet node for the trial. The signet faucets require CAPTCHAs;
-- a rapidsnark build to time the C++ prover on M6's 1,024-slot batch. This session's tool
-  policy refused the build;
+- a rapidsnark build, and a machine with more than 19 GB of RAM, to time a 1,024-slot signed
+  proof. This session's tool policy refused the rapidsnark build;
+- miners or pools that agree to include non-standard disproves, since their hashrate share sets
+  T_disprove (M12);
 - presenting the results to the P2Poolv2 maintainers.
 
 ## Branches
 
 All on `patrickdugan/p2poolv2`, each off `zk-clearing-roadmap` (6778e29e) unless noted.
-`zk-clearing-integration` merges them all.
+`zk-clearing-integration` merges them all. M9 to M12 branch off `zk-clearing-integration`
+(9fc8dc96).
 
 | Milestone | Branch |
 |---|---|
@@ -117,3 +150,6 @@ All on `patrickdugan/p2poolv2`, each off `zk-clearing-roadmap` (6778e29e) unless
 | M6 | `zk-clearing-m6` |
 | M7 | `zk-clearing-m7` |
 | M8 | `zk-clearing-m8` (on `zk-clearing-m7`) |
+| M9 and M12 | `zk-clearing-m9` |
+| M10 | `zk-clearing-m10` |
+| M11 | `zk-clearing-m11` |

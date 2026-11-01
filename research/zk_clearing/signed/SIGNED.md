@@ -104,7 +104,9 @@ circuit.
 
 ## Not covered
 
-- **Key registration** (above) is specified, not built.
+- **Key registration** (above) was specified here and is built in M10
+  ([../joined/JOINED.md](../joined/JOINED.md)), with the ownership tree storing the registered key
+  hash.
 - **`escrowId` and `refundScriptId`** are field encodings of labels. The Bitcoin transaction
   graph, not the proof, must spend exactly those outpoints and pay exactly those scripts. The
   payout template (M1) is where that check lives.
