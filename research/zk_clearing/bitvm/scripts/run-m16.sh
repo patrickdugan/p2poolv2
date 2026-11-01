@@ -28,9 +28,11 @@ BIN="$WORK/target/release"
 BTC="${BITCOIN_BIN:+$BITCOIN_BIN/}"
 [ -f "$WORK/key-salt" ] || { (umask 077; head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$WORK/key-salt"); }
 
+# The amounts can be set from outside (the testnet4 run used a 2,500-sat bond, a 1,000-sat burn
+# and a 500-sat connector to fit the coins it had).
 export ZKC_CHAIN=live ZKC_GRAPH=anchored ZKC_BIND_HEIGHT=1 ZKC_VALIDATE=0 \
   ZKC_PRESIGN_SAT_PER_KVB=100 ZKC_MARKET_SAT_PER_KVB=100 ZKC_MAX_SAT_PER_KVB=100 \
-  ZKC_BOND_SATS=5000 ZKC_BURN_SATS=2500 ZKC_DEADLINE_SATS=1000 \
+  ZKC_BOND_SATS="${ZKC_BOND_SATS:-5000}" ZKC_BURN_SATS="${ZKC_BURN_SATS:-2500}" ZKC_DEADLINE_SATS="${ZKC_DEADLINE_SATS:-1000}" \
   ZKC_KEY_SALT="$(cat "$WORK/key-salt")" ZKC_WALLET=m16
 
 case "$MODE" in
