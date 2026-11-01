@@ -153,8 +153,9 @@ fn template_for(inp: &Inputs, statement: &[BigUint]) -> template::Template {
 /// funding = cost + fee + refund fails, so no valid proof exists for it.
 fn tampered(kind: template::Kind, statement: &[BigUint]) -> Vec<BigUint> {
     let mut s = statement.to_vec();
-    s[kind.refund_index(0)] += kind.moved_sats();
-    s[kind.refund_index(1)] -= kind.moved_sats();
+    let moved = kind.moved_for(statement);
+    s[kind.refund_index(0)] += moved;
+    s[kind.refund_index(1)] -= moved;
     s
 }
 

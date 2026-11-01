@@ -10,8 +10,14 @@ use sha2::{Digest, Sha256};
 /// Demo keys are SHA-256 of a public label: anyone can spend them. Regtest only.
 pub const KEY_DOMAIN: &str = "p2poolv2/zk_clearing/bitvm-m1/regtest-demo-key/";
 
+/// A secret mixed into every key (ZKC_KEY_SALT, empty by default). M16 sets one on testnet4,
+/// where keys derived from public labels alone could be spent by anyone who reads this code.
+pub fn key_salt() -> String {
+    std::env::var("ZKC_KEY_SALT").unwrap_or_default()
+}
+
 pub fn keypair(secp: &Secp256k1<All>, label: &str) -> Keypair {
-    let secret = Sha256::digest(format!("{KEY_DOMAIN}{label}").as_bytes());
+    let secret = Sha256::digest(format!("{KEY_DOMAIN}{}{label}", key_salt()).as_bytes());
     Keypair::from_secret_key(secp, &SecretKey::from_slice(&secret).expect("hash is a valid key"))
 }
 

@@ -335,6 +335,13 @@ impl Kind {
         }
     }
 
+    /// What the tampered scenario moves for this `statement`: `moved_sats`, or less where buyer
+    /// slot 1's refund would fall under the dust limit (M16's small batch refunds 900 sats there).
+    pub fn moved_for(self, statement: &[BigUint]) -> u64 {
+        let refund = u64::try_from(&statement[self.refund_index(1)]).unwrap_or(u64::MAX);
+        self.moved_sats().min(refund.saturating_sub(P2TR_DUST))
+    }
+
     pub fn statement_hash(self, statement: &[BigUint]) -> Result<BigUint, String> {
         match self {
             Kind::Accounting => statement_hash(statement),

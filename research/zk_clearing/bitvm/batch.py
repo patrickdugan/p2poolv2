@@ -8,7 +8,10 @@ Writes two files into the output directory:
   input.json    witness input for accounting16x4_committed (snarkjs encoding)
   opening.json  the slot layout of the sale list and escrows, with payee labels
 
-Usage: python3 batch.py <output directory>
+Usage: python3 batch.py <output directory> [--small]
+
+--small writes M16's testnet4 batch: the same shape at about 1/500 of the amounts (10,000 sats of
+escrow in all), every output still above the 330-sat P2TR dust limit.
 """
 
 from __future__ import annotations
@@ -42,8 +45,22 @@ ESCROWS = (
     Escrow("buyer3", "regtest-escrow:buyer3", "refund-buyer3", 750_000, 7_000),
 )
 
+SMALL_SALES = (
+    Sale("m16-share:0", "m1ShareAlice", "seller-alice", "m1BuyerShare1", "buyer1", 2_000),
+    Sale("m16-share:1", "m1ShareBob", "seller-bob", "m1BuyerShare2", "buyer2", 3_000),
+    Sale("m16-share:2", "m1ShareAlice", "seller-alice", "m1BuyerShare3", "buyer3", 1_000),
+    Sale("m16-share:3", "m1ShareCarol", "seller-carol", "m1BuyerShare1", "buyer1", 700),
+)
 
-def build() -> tuple[dict, dict]:
+SMALL_ESCROWS = (
+    Escrow("buyer1", "testnet4-escrow:buyer1", "refund-buyer1", 4_000, 120),
+    Escrow("buyer2", "testnet4-escrow:buyer2", "refund-buyer2", 4_000, 120),
+    Escrow("buyer3", "testnet4-escrow:buyer3", "refund-buyer3", 2_000, 120),
+)
+
+
+def build(small: bool = False) -> tuple[dict, dict]:
+    SALES, ESCROWS = (SMALL_SALES, SMALL_ESCROWS) if small else (globals()["SALES"], globals()["ESCROWS"])
     context = Context("regtest", "m1-share-tip", "m1-bitcoin-tip", 1_000)
     state = InputState(
         context=context,
@@ -84,7 +101,7 @@ def build() -> tuple[dict, dict]:
 def main() -> None:
     out = pathlib.Path(sys.argv[1])
     out.mkdir(parents=True, exist_ok=True)
-    inputs, opening = build()
+    inputs, opening = build(small="--small" in sys.argv[2:])
     (out / "input.json").write_text(encode_snarkjs_input(inputs))
     (out / "opening.json").write_text(json.dumps(opening, indent=1, sort_keys=True))
     print(f"wrote {out / 'input.json'} and {out / 'opening.json'}")

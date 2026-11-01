@@ -30,12 +30,12 @@
 //! payout_unchallenged or timeout, so a challenged operator must have A confirmed within
 //! T_assert of the kickoff, however much of the assert chain it posted, or anyone can slash.
 //!
-//! M9 (`Graph::Anchored`) keeps every presigned fee at FEE_RATE and adds a way to raise it:
+//! M9 (`Graph::Anchored`) keeps every presigned fee at the presigned rate and adds a way to raise it:
 //! - both payouts are TRUC (version 3); the operator's back output is the CPFP handle, and
 //!   TRUC's one-child rule with sibling eviction bounds what a payee can pin;
 //! - the kickoff, assert_init, every commit and assert_final get an anchor output keyed to the
 //!   operator, ANCHOR sats, which only the operator can spend into a CPFP child;
-//! - the challenge pays the operator the assert chain's cost at MAX_FEE_RATE, children included.
+//! - the challenge pays the operator the assert chain's cost at `max_fee_rate()`, children included.
 
 use bitcoin::hashes::Hash;
 use bitcoin::key::{Keypair, Secp256k1, TapTweak};
@@ -49,10 +49,37 @@ use bitcoin::{absolute::LockTime, Amount, OutPoint, ScriptBuf, Sequence, Transac
 
 use crate::taproot::{key_path_script, keypair, leaf_hash, xonly, ScriptTree};
 
-pub const FEE_RATE: u64 = 2; // sat/vB
-/// The highest market fee rate (sat/vB) the anchored graph is built to settle at. The challenge
-/// pays the operator the assert chain's cost at this rate, CPFP children included.
-pub const MAX_FEE_RATE: u64 = 10;
+/// Fee rates are in sat/kvB throughout, so a graph can presign below 1 sat/vB (M16 runs at
+/// testnet4's relay floor of 100 sat/kvB).
+///
+/// The presigned fee rate: 2,000 sat/kvB (2 sat/vB) unless ZKC_PRESIGN_SAT_PER_KVB says otherwise.
+pub fn presign_rate() -> u64 {
+    env_u64("ZKC_PRESIGN_SAT_PER_KVB", 2_000)
+}
+
+/// The highest market fee rate the anchored graph is built to settle at: 10,000 sat/kvB unless
+/// ZKC_MAX_SAT_PER_KVB says otherwise. The challenge pays the operator the assert chain's cost at
+/// this rate, CPFP children included.
+pub fn max_fee_rate() -> u64 {
+    env_u64("ZKC_MAX_SAT_PER_KVB", 10_000)
+}
+
+/// The bond output before the kickoff (ZKC_BOND_SATS, default 0.1 BTC); KB carries it less the
+/// connectors and the kickoff fee.
+pub fn bond_sats() -> u64 {
+    env_u64("ZKC_BOND_SATS", 10_000_000)
+}
+
+/// Burned by every slash, disprove or timeout (ZKC_BURN_SATS, default half the default bond);
+/// the poster takes what is left of KB.
+pub fn burn_sats() -> u64 {
+    env_u64("ZKC_BURN_SATS", 5_000_000)
+}
+
+fn env_u64(name: &str, default: u64) -> u64 {
+    std::env::var(name).map(|v| v.parse().unwrap_or_else(|_| panic!("{name} must be an integer"))).unwrap_or(default)
+}
+
 pub const CONNECTOR: u64 = 330;
 /// Value of each operator-keyed anchor output (the P2TR dust limit).
 pub const ANCHOR: u64 = 330;
@@ -60,7 +87,7 @@ pub const ANCHOR: u64 = 330;
 /// Which graph to build.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Graph {
-    /// M2 as run: version 2 payouts, no anchors; the challenge pays the assert chain at FEE_RATE.
+    /// M2 as run: version 2 payouts, no anchors; the challenge pays the assert chain at the presigned rate.
     M2,
     /// M9: TRUC payouts and operator-keyed anchors (module docs).
     Anchored,
@@ -86,10 +113,6 @@ impl Graph {
         }
     }
 }
-/// The bond output before the kickoff; KB carries it less the connectors and the kickoff fee.
-pub const BOND: u64 = 10_000_000;
-/// Burned by every slash (disprove or timeout); the poster takes what is left of KB.
-pub const BURN: u64 = 5_000_000;
 
 /// Timeouts in blocks. T_KICKOFF is policy: the operator kicks off within T_KICKOFF blocks of
 /// the escrows' confirmation. The rest are relative locktimes that consensus enforces.
@@ -212,12 +235,19 @@ pub fn txout(sats: u64, script_pubkey: ScriptBuf) -> TxOut {
     TxOut { value: Amount::from_sat(sats), script_pubkey }
 }
 
+/// The presigned fee of `tx`.
 pub fn fee_for(tx: &Transaction) -> u64 {
-    fee_at(tx, FEE_RATE)
+    fee_at(tx, presign_rate())
 }
 
+/// The fee of `tx` at `rate` sat/kvB, rounded up.
 pub fn fee_at(tx: &Transaction, rate: u64) -> u64 {
-    tx.vsize() as u64 * rate
+    fee_of(tx.vsize() as u64, rate)
+}
+
+/// The fee of `vsize` vbytes at `rate` sat/kvB, rounded up.
+pub fn fee_of(vsize: u64, rate: u64) -> u64 {
+    (vsize * rate).div_ceil(1000)
 }
 
 fn schnorr(keys: &Keys, signer: &Keypair, sighash: [u8; 32], sighash_type: TapSighashType) -> Vec<u8> {
@@ -417,7 +447,7 @@ pub fn bump_child(
         t
     };
     let draft = build(total);
-    let package = rate * (parent.vsize() + draft.vsize()) as u64;
+    let package = fee_of((parent.vsize() + draft.vsize()) as u64, rate);
     let fee = package.saturating_sub(parent_fee).max(fee_at(&draft, rate)).max(min_fee);
     assert!(fee + 330 <= total, "bump coin too small: fee {fee}, coin and handle {total}");
     build(total - fee)
@@ -511,7 +541,7 @@ fn slash_inputs(kb: &Utxo, other: &Utxo, other_sequence: Sequence) -> Vec<(OutPo
 /// KB (all inputs, output 0 = burn of BURN) and, if `other` is a committee key-path output,
 /// SIGHASH_NONE on it (all inputs, no outputs). Output 1 onwards is left to the poster.
 pub fn slash_signatures(keys: &Keys, kb: &Utxo, other: &Utxo, other_sequence: Sequence, sign_other: bool) -> (Vec<u8>, Option<Vec<u8>>) {
-    let skeleton = tx(slash_inputs(kb, other, other_sequence), vec![txout(BURN, burn_script())]);
+    let skeleton = tx(slash_inputs(kb, other, other_sequence), vec![txout(burn_sats(), burn_script())]);
     let prevouts = [kb.txout.clone(), other.txout.clone()];
     let kb_sig = sign_key_path(keys, &keys.committee, &skeleton, &Prevouts::All(&prevouts), 0, TapSighashType::Single, None);
     let other_sig = sign_other.then(|| sign_key_path(keys, &keys.committee, &skeleton, &Prevouts::All(&prevouts), 1, TapSighashType::None, None));
@@ -523,12 +553,12 @@ pub fn slash_signatures(keys: &Keys, kb: &Utxo, other: &Utxo, other_sequence: Se
 #[allow(clippy::too_many_arguments)]
 pub fn slash_tx(kb: &Utxo, kb_sig: &[u8], other: &Utxo, other_sequence: Sequence, other_witness: Witness, reward_to: ScriptBuf, rate: u64, min_fee: u64) -> Transaction {
     let build = |reward: u64| {
-        let mut t = tx(slash_inputs(kb, other, other_sequence), vec![txout(BURN, burn_script()), txout(reward, reward_to.clone())]);
+        let mut t = tx(slash_inputs(kb, other, other_sequence), vec![txout(burn_sats(), burn_script()), txout(reward, reward_to.clone())]);
         t.input[0].witness = Witness::from_slice(&[kb_sig.to_vec()]);
         t.input[1].witness = other_witness.clone();
         t
     };
-    let total = kb.sats() + other.sats() - BURN;
+    let total = kb.sats() + other.sats() - burn_sats();
     let draft = build(total);
     build(total - fee_at(&draft, rate).max(min_fee))
 }
@@ -569,6 +599,9 @@ pub struct CommitLayout {
     /// (and the commit's anchor, when anchored).
     pub c_values: Vec<u64>,
     pub init_fee: u64,
+    /// vbytes of assert_init and of each commit, sized with the largest witness.
+    pub init_vsize: u64,
+    pub commit_vsizes: Vec<u64>,
     /// vbytes of assert_final, sized with placeholders.
     pub final_vsize: u64,
     pub anchored: bool,
@@ -582,21 +615,21 @@ impl CommitLayout {
 
     /// vbytes and presigned fee of each assert-chain transaction, in posting order.
     pub fn sizes(&self) -> Vec<(u64, u64)> {
-        let mut out = vec![(self.init_fee / FEE_RATE, self.init_fee)];
-        out.extend(self.commit_fees.iter().map(|fee| (fee / FEE_RATE, *fee)));
-        out.push((self.final_vsize, self.final_vsize * FEE_RATE));
+        let mut out = vec![(self.init_vsize, self.init_fee)];
+        out.extend(self.commit_vsizes.iter().copied().zip(self.commit_fees.iter().copied()));
+        out.push((self.final_vsize, fee_of(self.final_vsize, presign_rate())));
         out
     }
 
-    /// What CPFP children cost to carry every assert-chain transaction to `rate`.
+    /// What CPFP children cost to carry every assert-chain transaction to `rate` sat/kvB.
     pub fn bump_budget(&self, rate: u64, child_vsize: u64) -> u64 {
-        self.sizes().iter().map(|(vsize, fee)| (rate * (vsize + child_vsize)).saturating_sub(*fee)).sum()
+        self.sizes().iter().map(|(vsize, fee)| fee_of(vsize + child_vsize, rate).saturating_sub(*fee)).sum()
     }
 
     /// What a challenge pays the operator: the reserve, and in the anchored graph the children
-    /// that carry the chain to MAX_FEE_RATE; rounded up to 1,000 sats.
+    /// that carry the chain to `max_fee_rate()`; rounded up to 1,000 sats.
     pub fn challenge_amount(&self, child_vsize: u64) -> u64 {
-        let bump = if self.anchored { self.bump_budget(MAX_FEE_RATE, child_vsize) } else { 0 };
+        let bump = if self.anchored { self.bump_budget(max_fee_rate(), child_vsize) } else { 0 };
         (self.reserve() + bump).div_ceil(1000) * 1000
     }
 }
@@ -619,11 +652,13 @@ pub fn commit_layout(keys: &Keys, plan: &CommitPlan, graph: Graph) -> CommitLayo
     }
     // Sizes with placeholder outpoints, which do not change the size.
     let mut commit_fees = vec![];
+    let mut commit_vsizes = vec![];
     for group in &groups {
         let inputs = group.iter().map(|b| (OutPoint { txid: Txid::all_zeros(), vout: *b as u32 }, RBF)).collect();
         let prevouts: Vec<TxOut> = group.iter().map(|b| txout(100_000, plan.trees[*b].script_pubkey())).collect();
         let mut t = tx(inputs, commit_outputs(keys, CONNECTOR, anchored));
         sign_commit(keys, &mut t, group, &prevouts, plan);
+        commit_vsizes.push(t.vsize() as u64);
         commit_fees.push(fee_for(&t));
     }
     let mut c_values = vec![0u64; plan.batches.len()];
@@ -636,10 +671,11 @@ pub fn commit_layout(keys: &Keys, plan: &CommitPlan, graph: Graph) -> CommitLayo
     let placeholder = Utxo { outpoint: OutPoint { txid: Txid::all_zeros(), vout: 0 }, txout: txout(c_values.iter().sum(), key_path_script(&keys.secp, "operator-reserve")) };
     let draft = assert_init_tx(keys, &placeholder, &c_values, plan, anchored);
     let init_fee = fee_for(&draft);
+    let init_vsize = draft.vsize() as u64;
     let connector = |vout: usize| Utxo { outpoint: OutPoint { txid: Txid::all_zeros(), vout: vout as u32 }, txout: txout(CONNECTOR, keys.operator_script()) };
     let connectors: Vec<Utxo> = (0..groups.len()).map(connector).collect();
     let final_vsize = assert_final_tx(keys, &connector(groups.len()), &connectors, keys.operator_script(), anchored).vsize() as u64;
-    CommitLayout { groups, commit_fees, c_values, init_fee, final_vsize, anchored }
+    CommitLayout { groups, commit_fees, c_values, init_fee, init_vsize, commit_vsizes, final_vsize, anchored }
 }
 
 /// A commit's outputs: D_k, and in the anchored graph the operator's anchor.
@@ -791,12 +827,12 @@ mod tests {
         let parent_fee = fee_for(&parent);
         let paid = |child: &Transaction| ANCHOR + 1_000_000 - child.output[0].value.to_sat();
 
-        let child = bump_child(&keys, &parent, parent_fee, &handle, &keys.anchor_keypair(), &payer, &keys.operator, 10, 0, keys.operator_script());
+        let child = bump_child(&keys, &parent, parent_fee, &handle, &keys.anchor_keypair(), &payer, &keys.operator, 10_000, 0, keys.operator_script());
         assert_eq!(child.version, Version(3));
         assert_eq!(child.vsize() as u64, bump_child_vsize(&keys));
         assert_eq!(paid(&child), 10 * (parent.vsize() + child.vsize()) as u64 - parent_fee);
 
-        let outbid = bump_child(&keys, &parent, parent_fee, &handle, &keys.anchor_keypair(), &payer, &keys.operator, 10, 50_000, keys.operator_script());
+        let outbid = bump_child(&keys, &parent, parent_fee, &handle, &keys.anchor_keypair(), &payer, &keys.operator, 10_000, 50_000, keys.operator_script());
         assert_eq!(paid(&outbid), 50_000);
     }
 
