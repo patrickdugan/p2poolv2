@@ -1,0 +1,24 @@
+== 16x4   load: 10.21 13.25 9.61   MemAvailable: 12842 MB
+  run 1: witness 1.30 s 211796 KiB
+  run 2: witness 1.50 s 212688 KiB
+  run 3: witness 1.33 s 214296 KiB
+  run 1: prove 8.35 s 2252436 KiB
+  run 2: prove 6.06 s 2247200 KiB
+  run 3: prove 3.59 s 2172012 KiB
+[INFO]  snarkJS: OK!
+== 64x8   load: 12.43 13.54 9.78   MemAvailable: 10571 MB
+  run 1: witness 3.46 s 303844 KiB
+  run 2: witness 4.21 s 310912 KiB
+  run 3: witness 3.48 s 302116 KiB
+  run 1: prove 35.27 s 4783864 KiB
+  run 2: prove 25.84 s 4750660 KiB
+  run 3: prove 22.41 s 5010056 KiB
+[INFO]  snarkJS: OK!
+== 128x8   load: 9.30 11.73 9.49   MemAvailable: 5160 MB
+  run 1: witness 6.74 s 410680 KiB
+  run 2: witness 6.41 s 375188 KiB
+  run 3: witness 6.16 s 352208 KiB
+  run 1: prove 49.78 s 6826092 KiB
+  run 2: prove 33.48 s 6821480 KiB
+  run 3: prove 27.06 s 6854116 KiB
+[INFO]  snarkJS: OK!

@@ -1,0 +1,96 @@
+== compile
+template instances: 481
+non-linear constraints: 404001
+linear constraints: 0
+public inputs: 1
+private inputs: 1403 (1338 belong to witness)
+public outputs: 0
+wires: 403288
+labels: 1889582
+Written successfully: /root/zkc-m11/run-64x8/signed_tree_64x8.r1cs
+Written successfully: /root/zkc-m11/run-64x8/signed_tree_64x8.sym
+Written successfully: /root/zkc-m11/run-64x8/signed_tree_64x8_js/signed_tree_64x8.wasm
+Everything went okay
+[INFO]  snarkJS: Curve: bn-128
+[INFO]  snarkJS: # of Wires: 403288
+[INFO]  snarkJS: # of Constraints: 404001
+[INFO]  snarkJS: # of Private Inputs: 1403
+[INFO]  snarkJS: # of Public Inputs: 1
+[INFO]  snarkJS: # of Labels: 1889582
+[INFO]  snarkJS: # of Outputs: 0
+== fixtures
+wrote valid.json, resplit.json, padded.json and 10 invalid fixtures to /root/zkc-m11/run-64x8/inputs
+== valid witness
+[INFO]  snarkJS: WITNESS CHECKING FINISHED SUCCESSFULLY
+field check: witness.BN254_FR matches the circuit prime
+== invalid witnesses (each must be rejected)
+  rejected bad_escrow_signature: Error in template ForceEqualIfEnabled_325 line: 56
+  rejected bad_order_signature: Error in template ForceEqualIfEnabled_325 line: 56
+  rejected expired_escrow: Error in template Num2Bits_327 line: 38
+  rejected expired_order: Error in template Num2Bits_327 line: 38
+  rejected fee_over_cap: Error in template Bits51_0 line: 16
+  rejected order_r8_off_curve: Error in template BabyCheck_81 line: 82
+  rejected payout_script_swapped: Error in template ForceEqualIfEnabled_325 line: 56
+  rejected price_changed_after_signing: Error in template ForceEqualIfEnabled_325 line: 56
+  rejected seller_id_not_signer: Error in template SignedOrder_331 line: 114
+  rejected wrong_statement_hash: Error in template SignedClearingTree_480 line: 344
+== setup (insecure deterministic beacon)
+== prove and verify
+[INFO]  snarkJS: OK!
+valid proof: verified
+== re-split sale list with the same public totals
+re-split sale list: proves different public signals
+valid proof: statementHash matches circomlibjs
+re-split proof: statementHash differs, so a verifier holding the honest statement rejects it
+== tampered public signal (must not verify)
+tampered public signal: rejected
+== non-canonical public signal: value + r (must not verify)
+public signal + r: rejected by snarkjs
+== forged witness that bypasses the calculator (must not verify)
+forged witness: R1CS check rejects it (aborting checking process at constraint 388712)
+forged witness proof: produced, rejected by the verifier
+
+circuit: signed_tree_64x8
+git: unknown (uncommitted changes)
+circom: circom compiler 2.2.2
+node: v22.12.0  snarkjs: 0.7.5
+setup: INSECURE deterministic beacon, power 20, beacon 5ea82d8c6d749f711f35507f7adb4b2a94fafc771a9cd425d47bb193b2cf6466
+
+compile                         49.75 s   1730676 KiB max RSS
+ snarkJS: # of Wires: 403288
+ snarkJS: # of Constraints: 404001
+ snarkJS: # of Private Inputs: 1403
+ snarkJS: # of Public Inputs: 1
+ snarkJS: # of Outputs: 0
+field check: witness.BN254_FR matches the circuit prime
+
+invalid fixtures (witness calculator must reject):
+  rejected bad_escrow_signature: Error in template ForceEqualIfEnabled_325 line: 56
+  rejected bad_order_signature: Error in template ForceEqualIfEnabled_325 line: 56
+  rejected expired_escrow: Error in template Num2Bits_327 line: 38
+  rejected expired_order: Error in template Num2Bits_327 line: 38
+  rejected fee_over_cap: Error in template Bits51_0 line: 16
+  rejected order_r8_off_curve: Error in template BabyCheck_81 line: 82
+  rejected payout_script_swapped: Error in template ForceEqualIfEnabled_325 line: 56
+  rejected price_changed_after_signing: Error in template ForceEqualIfEnabled_325 line: 56
+  rejected seller_id_not_signer: Error in template SignedOrder_331 line: 114
+  rejected wrong_statement_hash: Error in template SignedClearingTree_480 line: 344
+phase 1: reused /root/zkc-m6/pot20_final.ptau
+groth16 setup + beacon         183.10 s   3995016 KiB max RSS
+
+proving key: 290072950 bytes
+verifying key: 2929 bytes JSON, sha256 db925be299c934298241755cf1741481c74e950a2376cc7ba96c16ffdaca4728
+groth16 prove                   22.29 s   5386448 KiB max RSS
+groth16 verify (CLI)             0.87 s    290008 KiB max RSS
+proof: 2 G1 + 1 G2 = 256 bytes uncompressed; public signals: 1
+valid proof: verified
+re-split sale list: proves different public signals
+statementHash (circomlibjs, honest statement): 1060842346676126883454636135731085994048965473656069248081747036079697730111
+valid proof: statementHash matches circomlibjs
+re-split proof: statementHash differs, so a verifier holding the honest statement rejects it
+tampered public signal: rejected
+public signal + r: rejected by snarkjs
+forged witness: R1CS check rejects it (aborting checking process at constraint 388712)
+forged witness proof: produced, rejected by the verifier
+padded batch (padding slots, padding-key signatures): witness satisfies the R1CS
+exit 0

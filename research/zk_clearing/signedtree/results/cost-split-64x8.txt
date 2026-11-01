@@ -1,0 +1,18 @@
+signed_tree_64x8 (depth 6)
+part                                                 each    count        total
+SignedOrder (signature part, per sale slot)          4852       64       310528
+SignedEscrow (signature part, per buyer slot)        5006        8        40048
+ClearingAmounts (arithmetic, ranges, selectors)      10343        1        10343
+selected-buyer products (selector x buyerId)            1      512          512
+sale leaf Poseidon(6)                                 354       64        22656
+sale tree: 63 x Poseidon(2)                         15120        1        15120
+escrow leaf Poseidon(5)                               321        8         2568
+escrow commitment PoseidonChunked(8)                  402        1          402
+statement hash PoseidonChunked(36)                   1773        1         1773
+batchHeight Bits51                                     51        1           51
+sum of parts                                                             404001
+whole circuit                                                            404001
+difference (whole - sum)                                                      0
+signature part: 350576 (86.8% of the circuit); everything else: 53425
+per sale slot: signature part 4852, everything else 835 (whole circuit 6313)
+inside one SignedOrder (4852): EdDSAPoseidonVerifier 4217, message Poseidon(6) 354, key hash Poseidon(2) 240, 2 x BabyCheck 6, expiry check 32, other 3
