@@ -1,0 +1,66 @@
+circuit: owned_tree_pk_16x4
+git: unknown (uncommitted changes)
+circom: circom compiler 2.2.2
+node: v22.12.0  snarkjs: 0.7.5
+setup: INSECURE deterministic beacon, power 20, beacon 5ea82d8c6d749f711f35507f7adb4b2a94fafc771a9cd425d47bb193b2cf6466
+
+compile                         48.33 s   1852612 KiB max RSS
+ snarkJS: # of Wires: 153155
+ snarkJS: # of Constraints: 152805
+ snarkJS: # of Private Inputs: 1104
+ snarkJS: # of Public Inputs: 1
+ snarkJS: # of Outputs: 0
+field check: witness.BN254_FR matches the circuit prime
+
+invalid fixtures (witness calculator must reject):
+  rejected bad_order_signature: Error in template ForceEqualIfEnabled_322 line: 56
+  rejected duplicate_output_two_slots: Error in template Num2Bits_482 line: 38
+  rejected hole_in_active_slots: Error in template WindowOrder_566 line: 146
+  rejected member_leaf_at_wrong_position: Error in template PackedWindowSale_565 line: 283
+  rejected output_expired: Error in template PackedWindowSale_565 line: 283
+  rejected output_immature: Error in template PackedWindowSale_565 line: 283
+  rejected output_spent_before_anchor: Error in template PackedWindowSale_565 line: 283
+  rejected position_disagrees_with_path: Error in template WindowLevel_564 line: 82
+  rejected record_disagrees_with_group: Error in template WindowGroup_562 line: 227
+  rejected signer_is_another_registered_seller: Error in template PackedWindowSale_565 line: 283
+  rejected signer_not_registered_owner: Error in template PackedWindowSale_565 line: 283
+  rejected slots_out_of_position_order: Error in template Num2Bits_482 line: 38
+  rejected statement_hash_omits_root: Error in template SignedClearingTree_481 line: 355
+  rejected unregistered_owner_output: Error in template PackedWindowSale_565 line: 283
+  rejected wrong_window_root: Error in template PackedWindowSale_565 line: 283
+phase 1: reused /root/zkc-m6/pot20_final.ptau
+groth16 setup + beacon         193.05 s   2195588 KiB max RSS
+
+proving key: 141748182 bytes
+verifying key: 2930 bytes JSON, sha256 a5bc11e63e26d6bbba46443871dde76ae07e7336150b0372a777c649e78cf9ff
+groth16 prove                   11.60 s   3121048 KiB max RSS
+groth16 verify (CLI)             0.77 s    299308 KiB max RSS
+proof: 2 G1 + 1 G2 = 256 bytes uncompressed; public signals: 1
+valid proof: verified
+re-split sale list: proves different public signals
+statementHash (circomlibjs, honest statement): 18644187894325707955230326467416651244908436718258464337149732932340570080090
+valid proof: statementHash matches circomlibjs
+re-split proof: statementHash differs, so a verifier holding the honest statement rejects it
+tampered public signal: rejected
+public signal + r: rejected by snarkjs
+forged witness: R1CS check rejects it (aborting checking process at constraint 149033)
+forged witness proof: produced, rejected by the verifier
+
+checks specific to the join:
+  padded batch: witness satisfies the R1CS
+  statement has 21 values and its last is the tree's root: 6002641005699930589432488308731212238575517087728275113174642532176594588727
+  signer_not_registered_owner: refused in PackedWindowSale (PackedWindowSale < PackedWindowSales < OwnedSignedTreePacked)
+  signer_is_another_registered_seller: refused in PackedWindowSale (PackedWindowSale < PackedWindowSales < OwnedSignedTreePacked)
+  unregistered_owner_output: refused in PackedWindowSale (PackedWindowSale < PackedWindowSales < OwnedSignedTreePacked)
+  output_spent_before_anchor: refused in PackedWindowSale (PackedWindowSale < PackedWindowSales < OwnedSignedTreePacked)
+  output_expired: refused in PackedWindowSale (PackedWindowSale < PackedWindowSales < OwnedSignedTreePacked)
+  output_immature: refused in PackedWindowSale (PackedWindowSale < PackedWindowSales < OwnedSignedTreePacked)
+  wrong_window_root: refused in PackedWindowSale (PackedWindowSale < PackedWindowSales < OwnedSignedTreePacked)
+  bad_order_signature: refused in EdDSAPoseidonVerifier (ForceEqualIfEnabled < EdDSAPoseidonVerifier < SignedOrder < SignedClearingTree < OwnedSignedTreePacked)
+  statement_hash_omits_root: refused in SignedClearingTree (SignedClearingTree < OwnedSignedTreePacked)
+  position_disagrees_with_path: refused in WindowLevel (WindowLevel < PackedWindowSale < PackedWindowSales < OwnedSignedTreePacked)
+  member_leaf_at_wrong_position: refused in PackedWindowSale (PackedWindowSale < PackedWindowSales < OwnedSignedTreePacked)
+  record_disagrees_with_group: refused in WindowGroup (WindowGroup < PackedWindowSale < PackedWindowSales < OwnedSignedTreePacked)
+  duplicate_output_two_slots: refused in WindowOrder (Num2Bits < WindowOrder < PackedWindowSales < OwnedSignedTreePacked)
+  slots_out_of_position_order: refused in WindowOrder (Num2Bits < WindowOrder < PackedWindowSales < OwnedSignedTreePacked)
+  hole_in_active_slots: refused in WindowOrder (WindowOrder < PackedWindowSales < OwnedSignedTreePacked)

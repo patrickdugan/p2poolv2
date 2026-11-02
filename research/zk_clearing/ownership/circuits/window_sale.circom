@@ -189,3 +189,134 @@ template WindowSales(saleSlots, radixBits, levels) {
         }
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// Packed layout (ROADMAP item 3, joinedtree/JOINED_TREE.md section 12).
+//
+// The bottom node of the tree holds 2^groupBits records (key, owner) directly, so the sale slot
+// never hashes a separate leaf: the node is Poseidon(key_0, owner_0, ..., key_{g-1}, owner_{g-1}),
+// the record at the position's low groupBits bits must be (saleId, sellerId), and the levels
+// above it are WindowLevel(radixBits) as before. The position has groupBits + radixBits * levels
+// bits. Units and root height are not in a record: no circuit rule reads them, and the builder's
+// rule for the set (units, window) already decides who is a record.
+//
+// With groupBits = 2 and radixBits = 3 the bottom node and the nodes above it are all
+// Poseidon(8). That is sound because the path has a fixed length: the root fixes its preimage,
+// that preimage fixes the next one down, and so on to the bottom node, so under collision
+// resistance a node cannot be read at another depth.
+
+// A bottom node: the record at `digit` is (saleId, sellerId), and the parent hashes all records.
+template WindowGroup(groupBits) {
+    var records = 1 << groupBits;
+    signal input saleId;
+    signal input sellerId;
+    signal input digit[groupBits];
+    signal input fields[2 * records];
+    signal output parent;
+
+    component selectKey = SelectByBits(groupBits);
+    component selectOwner = SelectByBits(groupBits);
+    for (var index = 0; index < records; index++) {
+        selectKey.in[index] <== fields[2 * index];
+        selectOwner.in[index] <== fields[2 * index + 1];
+    }
+    for (var bit = 0; bit < groupBits; bit++) {
+        selectKey.bits[bit] <== digit[bit];
+        selectOwner.bits[bit] <== digit[bit];
+    }
+    selectKey.out === saleId;
+    selectOwner.out === sellerId;
+
+    component node = Poseidon(2 * records);
+    for (var index = 0; index < 2 * records; index++) {
+        node.inputs[index] <== fields[index];
+    }
+    parent <== node.out;
+}
+
+template PackedWindowSale(groupBits, radixBits, levels) {
+    var radix = 1 << radixBits;
+    var records = 1 << groupBits;
+    signal input enabled;   // 1 for a sale, 0 for padding
+    signal input windowRoot;
+    signal input saleId;
+    signal input sellerId;
+    signal input position;
+    signal input group[2 * records];
+    signal input children[levels][radix];
+
+    enabled * (1 - enabled) === 0;
+    // A padding slot names nothing, matching the v1 circuit's padding rule.
+    (1 - enabled) * saleId === 0;
+    (1 - enabled) * sellerId === 0;
+
+    // The position's digits, the record index first, then each upper level's digit.
+    component bits = Num2Bits(groupBits + radixBits * levels);
+    bits.in <== position;
+
+    component bottom = WindowGroup(groupBits);
+    bottom.saleId <== saleId;
+    bottom.sellerId <== sellerId;
+    for (var bit = 0; bit < groupBits; bit++) {
+        bottom.digit[bit] <== bits.out[bit];
+    }
+    for (var index = 0; index < 2 * records; index++) {
+        bottom.fields[index] <== group[index];
+    }
+
+    component level[levels];
+    for (var l = 0; l < levels; l++) {
+        level[l] = WindowLevel(radixBits);
+        if (l == 0) {
+            level[l].current <== bottom.parent;
+        } else {
+            level[l].current <== level[l - 1].parent;
+        }
+        for (var bit = 0; bit < radixBits; bit++) {
+            level[l].digit[bit] <== bits.out[groupBits + l * radixBits + bit];
+        }
+        for (var index = 0; index < radix; index++) {
+            level[l].children[index] <== children[l][index];
+        }
+    }
+
+    enabled * (level[levels - 1].parent - windowRoot) === 0;
+}
+
+template PackedWindowSales(saleSlots, groupBits, radixBits, levels) {
+    var radix = 1 << radixBits;
+    var records = 1 << groupBits;
+    signal input windowRoot;
+    signal input activeSale[saleSlots];
+    signal input saleId[saleSlots];
+    signal input sellerId[saleSlots];
+    signal input position[saleSlots];
+    signal input group[saleSlots][2 * records];
+    signal input children[saleSlots][levels][radix];
+
+    component sale[saleSlots];
+    component order[saleSlots];
+    for (var slot = 0; slot < saleSlots; slot++) {
+        sale[slot] = PackedWindowSale(groupBits, radixBits, levels);
+        sale[slot].enabled <== activeSale[slot];
+        sale[slot].windowRoot <== windowRoot;
+        sale[slot].saleId <== saleId[slot];
+        sale[slot].sellerId <== sellerId[slot];
+        sale[slot].position <== position[slot];
+        for (var index = 0; index < 2 * records; index++) {
+            sale[slot].group[index] <== group[slot][index];
+        }
+        for (var l = 0; l < levels; l++) {
+            for (var index = 0; index < radix; index++) {
+                sale[slot].children[l][index] <== children[slot][l][index];
+            }
+        }
+        if (slot > 0) {
+            order[slot] = WindowOrder(groupBits + radixBits * levels);
+            order[slot].previousActive <== activeSale[slot - 1];
+            order[slot].active <== activeSale[slot];
+            order[slot].previousPosition <== position[slot - 1];
+            order[slot].position <== position[slot];
+        }
+    }
+}

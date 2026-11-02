@@ -1,0 +1,11 @@
+template instances: 87
+non-linear constraints: 2552813
+linear constraints: 0
+public inputs: 0
+private inputs: 53249
+public outputs: 0
+wires: 2591729
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 11:28.34
+	Maximum resident set size (kbytes): 21206832
+7.0.0-38-generic
+Model name:                              Intel Core Processor (Skylake, IBRS)

@@ -248,6 +248,171 @@ class TreeRuleTests(unittest.TestCase):
         self.assertFalse(wt.check_ascending([3, 9], [0, 1]))  # padding first
 
 
+def packed_leaves_of(entry) -> list:
+    return [wt.PackedLeaf(int(l["key"]), int(l["owner"])) for l in entry["leaves"]]
+
+
+def small_packed(group_bits=2, radix_bits=3, levels=2, count=37, seed=4):
+    rng = random.Random(seed)
+    keys = sorted({rng.getrandbits(200) + 1 for _ in range(count)})
+    assert len(keys) == count
+    leaves = [wt.PackedLeaf(key, rng.getrandbits(250)) for key in keys]
+    return wt.PackedWindowTree(leaves, group_bits, radix_bits, levels), leaves
+
+
+class PackedTreeTests(unittest.TestCase):
+    def test_every_vector_tree_has_the_same_group_hashes_root_and_paths(self):
+        for entry in VECTORS["packedTrees"]:
+            with self.subTest(entry["name"]):
+                tree = wt.PackedWindowTree(packed_leaves_of(entry), entry["groupBits"], entry["radixBits"], entry["levels"])
+                self.assertEqual(tree.root, int(entry["root"]))
+                self.assertEqual([str(h) for h in tree._nodes[0]], entry["groupHashes"])
+                for probe in entry["paths"]:
+                    path = tree.path(probe["position"])
+                    self.assertEqual([int(x) for x in probe["group"]], list(path.group), probe["position"])
+                    self.assertEqual(
+                        [list(map(int, group)) for group in probe["children"]],
+                        [list(group) for group in path.children],
+                        f"position {probe['position']}",
+                    )
+                    within = probe["position"] & ((1 << entry["groupBits"]) - 1)
+                    key, owner = path.group[2 * within], path.group[2 * within + 1]
+                    self.assertEqual(
+                        wt.packed_root_from_path(key, owner, path, entry["groupBits"], entry["radixBits"]), tree.root)
+
+    def test_the_vectors_cover_the_production_shape_and_empty_and_binary_trees(self):
+        shapes = {(e["groupBits"], e["radixBits"], e["levels"], len(e["leaves"])) for e in VECTORS["packedTrees"]}
+        self.assertIn((2, 3, 5, 37), shapes)
+        self.assertIn((1, 1, 2, 0), shapes)
+        self.assertTrue(any(bits == 1 for _, bits, _, _ in shapes))
+
+    def test_the_production_shape_holds_the_production_window(self):
+        tree = wt.PackedWindowTree([], wt.PACKED_GROUP_BITS, wt.PACKED_RADIX_BITS, wt.PACKED_LEVELS)
+        self.assertEqual(tree.capacity, 131_072)
+        self.assertGreaterEqual(tree.capacity, 119_953)
+        self.assertLess(tree.capacity // 2, 119_953)
+
+    def test_every_record_proves_and_a_wrong_fact_does_not(self):
+        for shape, count in (((2, 3, 2), 37), ((1, 1, 4), 11), ((1, 2, 2), 20)):
+            tree, leaves = small_packed(*shape, count=count)
+            for leaf in leaves:
+                _, path = tree.prove(leaf.key)
+                self.assertTrue(tree.verify(leaf, path))
+            leaf = leaves[4]
+            _, path = tree.prove(leaf.key)
+            for wrong in (wt.PackedLeaf(leaf.key + 1, leaf.owner), wt.PackedLeaf(leaf.key, leaf.owner + 1)):
+                self.assertFalse(tree.verify(wrong, path))
+
+    def test_the_record_at_the_positions_low_bits_must_be_the_claim(self):
+        tree, leaves = small_packed()
+        _, path = tree.prove(leaves[5].key)
+        neighbour = leaves[4] if path.position % 4 else leaves[6]
+        with self.assertRaises(wt.RecordMismatch):
+            wt.packed_root_from_path(neighbour.key, neighbour.owner, path)
+        moved = wt.PackedPath(path.position ^ 1, path.group, path.children)
+        with self.assertRaises(wt.RecordMismatch):
+            wt.packed_root_from_path(leaves[5].key, leaves[5].owner, moved)
+
+    def test_the_running_hash_must_sit_at_the_digit_above_the_bottom_node(self):
+        tree, leaves = small_packed()
+        _, path = tree.prove(leaves[9].key)
+        moved = wt.PackedPath(path.position + 4, path.group, path.children)
+        with self.assertRaises(wt.PathMismatch) as raised:
+            wt.packed_root_from_path(leaves[9].key, leaves[9].owner, moved)
+        self.assertNotIsInstance(raised.exception, wt.RecordMismatch)
+
+    def test_a_tampered_field_or_sibling_changes_the_root(self):
+        tree, leaves = small_packed()
+        leaf, path = tree.prove(leaves[9].key)
+        within, digits = path.digits(2, 3)
+        for index in range(len(path.group)):
+            if index // 2 == within:
+                continue
+            fields = list(path.group)
+            fields[index] += 1
+            forged = wt.PackedPath(path.position, tuple(fields), path.children)
+            self.assertFalse(tree.verify(leaf, forged), f"field {index}")
+        for level, digit in enumerate(digits):
+            groups = [list(group) for group in path.children]
+            groups[level][(digit + 1) % 8] += 1
+            forged = wt.PackedPath(path.position, path.group, tuple(map(tuple, groups)))
+            self.assertFalse(tree.verify(leaf, forged), f"level {level + 1}")
+
+    def test_a_spliced_forgery_passes_every_selection_check_and_fails_the_root(self):
+        tree, leaves = small_packed()
+        fake = wt.PackedLeaf(leaves[2].key + 1, leaves[2].owner)
+        for position in (2, 6, 20):
+            forged = tree.spliced_path(position, (fake.key, fake.owner))
+            root = wt.packed_root_from_path(fake.key, fake.owner, forged)
+            self.assertNotEqual(root, tree.root)
+            self.assertFalse(tree.verify(fake, forged))
+
+    def test_splicing_the_stored_record_gives_the_real_path(self):
+        tree, leaves = small_packed()
+        for rank in (0, 9, 36):
+            self.assertEqual(tree.spliced_path(rank, (leaves[rank].key, leaves[rank].owner)), tree.path(rank))
+
+    def test_an_empty_position_proves_the_empty_record_and_no_real_one(self):
+        tree, leaves = small_packed()
+        empty = tree.path(41)
+        self.assertEqual(wt.packed_root_from_path(0, 0, empty), tree.root)
+        self.assertFalse(tree.verify(leaves[0], empty))
+
+    def test_the_bottom_node_pads_a_partial_group_with_empty_records(self):
+        tree, leaves = small_packed(count=37)
+        last = tree.path(36)
+        self.assertEqual(last.group[:2], (leaves[36].key, leaves[36].owner))
+        self.assertEqual(last.group[2:], (0,) * 6)
+
+    def test_keys_ascend_and_capacity_holds(self):
+        low, high = wt.PackedLeaf(5, 1), wt.PackedLeaf(9, 1)
+        wt.PackedWindowTree([low, high], 1, 1, 1)
+        with self.assertRaises(wt.KeysNotAscending):
+            wt.PackedWindowTree([high, low], 1, 1, 1)
+        with self.assertRaises(wt.KeysNotAscending):
+            wt.PackedWindowTree([low, low], 1, 1, 1)
+        with self.assertRaises(wt.CapacityExceeded):
+            wt.PackedWindowTree([wt.PackedLeaf(k, 1) for k in range(1, 6)], 1, 1, 1)
+        with self.assertRaises(wt.WindowTreeError):
+            wt.PackedWindowTree([wt.PackedLeaf(P, 1)], 1, 1, 1)
+        with self.assertRaises(wt.WindowTreeError):
+            wt.packed_root_from_path(1, P, wt.PackedPath(0, (0, 0, 0, 0), ((0, 0),)), 1, 1)
+
+    def test_positions_split_into_the_record_index_and_the_upper_digits(self):
+        self.assertEqual(wt.digits_of_packed(0b111_011_10, 2, 3, 2), (2, [0b011, 0b111]))
+        self.assertEqual(wt.digits_of_packed(0, 2, 3, 5), (0, [0] * 5))
+        self.assertEqual(wt.digits_of_packed(131_071, 2, 3, 5), (3, [7] * 5))
+        with self.assertRaises(wt.WindowTreeError):
+            wt.digits_of_packed(131_072, 2, 3, 5)
+
+    def test_proof_size_counts_the_other_records_and_siblings(self):
+        tree, _ = small_packed(2, 3, 5, count=9)
+        self.assertEqual(tree.path(3).size_bytes(3), 32 * (2 * 3 + 5 * 7))
+
+    def test_hash_count_is_the_stored_nodes(self):
+        tree = wt.PackedWindowTree([wt.PackedLeaf(k, 1) for k in range(1, 33)], 2, 3, 1)
+        self.assertEqual(tree.hash_count(), 8 + 1)
+        smt.reset_hash_counts()
+        wt.PackedWindowTree([wt.PackedLeaf(k, 1) for k in range(1, 33)], 2, 3, 1)
+        # 8 bottom nodes and 1 top node, plus the empty bottom node and the empty level-1 node: all 8 wide
+        self.assertEqual(smt.WIDE_HASH_COUNTS.get(8, 0), 8 + 1 + 2)
+
+    def test_the_set_is_the_window_trees_set_with_the_owner_in_the_record(self):
+        model = model_to(100)
+        registry = {ALICE: 12345}
+        packed, outputs = wt.build_packed_window_tree(model, 100, registry, 2, 3, 2)
+        plain, same = wt.build_window_tree(model, 100, registry, 3, 3)
+        self.assertEqual([o.outpoint for o in outputs], [o.outpoint for o in same])
+        self.assertEqual(packed.keys, plain.keys)
+        for position, output in enumerate(outputs):
+            record = packed.leaves[position]
+            self.assertEqual((record.key, record.owner), (output.key, plain.leaves[position].owner))
+            self.assertTrue(packed.verify(*packed.prove(output.key)))
+        self.assertNotEqual(packed.root, plain.root)
+        with self.assertRaises(wt.CapacityExceeded):
+            wt.build_packed_window_tree(model, 100, registry, 1, 1, 3)
+
+
 SMALL = ChainParams(coinbase_maturity=3, payout_depth=40, expiry_margin=2, max_depth=3)
 ALICE, BOB, CAROL = "p2pool1alice", "p2pool1bob", "p2pool1carol"
 

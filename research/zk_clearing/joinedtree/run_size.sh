@@ -2,14 +2,15 @@
 # One joined signed-tree circuit end to end through groth16/run.sh, then the checks that belong
 # to the join: padding, the extra valid inputs, and where each invalid input is refused.
 #
-# Usage: bash research/zk_clearing/joinedtree/run_size.sh <bin|r8|smt> <sale slots> <buyer slots> <build dir>
+# Usage: bash research/zk_clearing/joinedtree/run_size.sh <bin|r8|pk|smt> <sale slots> <buyer slots> <build dir>
 #   bin  the dense binary window tree, 17 levels       (OwnedSignedTreeWindow(.., 1, 17))
 #   r8   the dense eight-way window tree, 6 levels     (OwnedSignedTreeWindow(.., 3, 6))
+#   pk   the packed window tree: four records per bottom node, five eight-way levels (OwnedSignedTreePacked(.., 2, 3, 5))
 #   smt  M5's 40-level sparse Merkle tree              (OwnedSignedTreeSmt(.., 40))
 # Environment: PTAU=<prepared phase-1 file>, POWER (default 20). circom 2.2.2, Node, python3 and
 # GNU time must be on PATH, as for groth16/run.sh. The setup is the INSECURE deterministic one.
 set -euo pipefail
-KIND="${1:?usage: run_size.sh <bin|r8|smt> <sale slots> <buyer slots> <build dir>}"
+KIND="${1:?usage: run_size.sh <bin|r8|pk|smt> <sale slots> <buyer slots> <build dir>}"
 SALES="${2:?}"
 BUYERS="${3:?}"
 BUILD="${4:?}"
@@ -20,8 +21,9 @@ CIRCUIT="owned_tree_${KIND}_${SALES}x${BUYERS}"
 case "$KIND" in
   bin) export MEMBERSHIP=window RADIX_BITS=1 ;;
   r8) export MEMBERSHIP=window RADIX_BITS=3 ;;
+  pk) export MEMBERSHIP=packed RADIX_BITS=3 ;;
   smt) export MEMBERSHIP=smt RADIX_BITS=1 ;;
-  *) echo "kind must be bin, r8 or smt"; exit 2 ;;
+  *) echo "kind must be bin, r8, pk or smt"; exit 2 ;;
 esac
 
 status=0
@@ -74,7 +76,7 @@ echo "== where each invalid input is refused"
 # The witness calculator's error names a chain of templates, innermost first. Skipping circomlib's
 # helpers (ForceEqualIfEnabled, Num2Bits, ...), the first template of the join or of the signed
 # tree must be the one the manifest names.
-KNOWN=" WindowSale WindowLevel WindowOrder SMTVerifier OwnedSale EdDSAPoseidonVerifier SignedOrder SignedEscrow SignedClearingTree "
+KNOWN=" WindowSale PackedWindowSale WindowLevel WindowGroup WindowOrder SMTVerifier OwnedSale EdDSAPoseidonVerifier SignedOrder SignedEscrow SignedClearingTree "
 rm -f "$BUILD/.refusal-bad"
 "$NODE" -e "
   const manifest = require('$BUILD/inputs/work/variants/manifest.json');
@@ -83,7 +85,7 @@ rm -f "$BUILD/.refusal-bad"
   # The pure-Python model of the membership and order rules predicts the same template (or none,
   # for the signature and statement-hash inputs, which it does not model).
   case "$want" in
-    WindowSale|WindowLevel|WindowOrder|SMTVerifier) model="[\"$want\"]" ;;
+    WindowSale|PackedWindowSale|WindowLevel|WindowGroup|WindowOrder|SMTVerifier) model="[\"$want\"]" ;;
     *) model="[]" ;;
   esac
   if [ "$predicted" != "$model" ]; then

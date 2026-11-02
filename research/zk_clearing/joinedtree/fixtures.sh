@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Fixtures for the joined signed-tree circuits, called by groth16/run.sh through FIXTURES=...
 # with <out dir> <node_modules dir>. Environment: SCALE_SALES, SCALE_BUYERS, MEMBERSHIP
-# (window | smt) and RADIX_BITS (1 | 3, window only).
+# (window | packed | smt) and RADIX_BITS (1 | 3, window only).
 #
 # 1. make_joined_tree.py names the order keys the world needs.
 # 2. joined/sign_joined.js turns the names into key hashes (BabyJubjub, circomlibjs).

@@ -126,7 +126,10 @@ Done since the first version of this list: anchors in M2's graph (M9), the signe
 (M11), M5 joined to M4 (M10), the disprove route (M12), rising fees and batchHeight (M13), BitVM
 on M11's statement (M14), the joined statement at scale (M15), and the expiries in the circuit:
 M4 and M11 prove `batchHeight + 4 <= orderExpiry` and `batchHeight + 22 <= escrowExpiry`, the
-bound graph's deadline and latest payout (M13.md section 2).
+bound graph's deadline and latest payout (M13.md section 2). And power 23: packing four
+(key, owner) records into each bottom node of M15's window tree cuts a sale slot from 2,775 to
+2,474 constraints. That brings 1,024×8 to 8,309,063, 0.95% under 2^23, by compiled parts
+(JOINED_TREE.md section 12).
 
 Engineering that can be done next without anyone else:
 
@@ -136,8 +139,7 @@ Engineering that can be done next without anyone else:
    depth.
 2. **One statement for everything.** M15's joined circuit through M14's BitVM pipeline on M13's
    bound, anchored graph, so one regtest run covers signatures, ownership, fees and heights.
-3. **Under power 23.** M15's eight-way tree misses 2^23 by 2.7% at 1,024 sales. A sale leaf or
-   chunked hash a few percent cheaper, or 960 slots, fits a public power-23 ceremony file.
+   With the packed tree it stays under power 23.
 
 Waiting on Patrick or third parties (details in M8):
 

@@ -38,7 +38,7 @@ def as_ints(value):
     return [as_ints(item) for item in value] if isinstance(value, list) else int(value)
 
 
-MEMBERSHIP_TEMPLATES = {mjt.SALE, mjt.LEVEL, mjt.ORDER, mjt.SMT}
+MEMBERSHIP_TEMPLATES = {mjt.SALE, mjt.PACKED_SALE, mjt.LEVEL, mjt.GROUP, mjt.ORDER, mjt.SMT}
 
 
 class WorldTests(unittest.TestCase):
@@ -226,6 +226,88 @@ class VariantTests(unittest.TestCase):
             mjt.build(self.key_hashes, Path(directory), "smt", 16, 4)
             world = json.loads((Path(directory) / "world.json").read_text())
             self.assertEqual(world["root"], world["smt"]["root"])
+
+
+class PackedVariantTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.key_hashes = stand_in_key_hashes()
+        cls.world = mjt.build_world(cls.key_hashes, packed=True)
+
+    def sizes(self):
+        for sales, buyers in ((16, 4), (32, 8), (64, 8)):
+            yield sales, buyers, mjt.variants(self.world, "packed", sales, buyers)
+
+    def test_the_packed_tree_holds_the_same_set_as_the_window_trees(self):
+        plain = mjt.build_world(self.key_hashes, 3)
+        self.assertEqual(self.world.window.keys, plain.window.keys)
+        self.assertEqual([o.outpoint for o in self.world.window_outputs], [o.outpoint for o in plain.window_outputs])
+        self.assertEqual(self.world.window.capacity, 131_072)
+        self.assertEqual(self.world.window.levels, 5)
+        for position, leaf in enumerate(plain.window.leaves):
+            record = self.world.window.leaves[position]
+            self.assertEqual((record.key, record.owner), (leaf.key, leaf.owner))
+
+    def test_every_invalid_variant_is_refused_where_the_python_model_says(self):
+        for sales, buyers, items in self.sizes():
+            for variant in items:
+                _, predicted = mjt.witness_for(self.world, "packed", variant)
+                want = [variant.rejected_in] if variant.rejected_in in MEMBERSHIP_TEMPLATES else []
+                self.assertEqual(predicted, want, (sales, variant.name))
+
+    def test_the_accepted_variants_pass_every_membership_and_order_rule(self):
+        for sales, buyers, items in self.sizes():
+            for variant in items:
+                if variant.rejected_in is None:
+                    _, predicted = mjt.witness_for(self.world, "packed", variant)
+                    self.assertEqual(predicted, [], (sales, variant.name))
+
+    def test_the_packed_variants_are_the_window_variants_plus_the_record_check(self):
+        window = {v.name for v in mjt.variants(mjt.build_world(self.key_hashes, 3), "window", 16, 4)}
+        packed = {v.name: v for v in mjt.variants(self.world, "packed", 16, 4)}
+        self.assertEqual(set(packed) - window, {"record_disagrees_with_group"})
+        self.assertEqual(window - set(packed), set())
+        self.assertEqual(packed["record_disagrees_with_group"].rejected_in, mjt.GROUP)
+        self.assertEqual(packed["position_disagrees_with_path"].rejected_in, mjt.LEVEL)
+        self.assertEqual(packed["wrong_window_root"].rejected_in, mjt.PACKED_SALE)
+
+    def test_the_record_forgery_keeps_the_positions_and_swaps_two_records(self):
+        for sales, buyers, items in self.sizes():
+            record = next(v for v in items if v.name == "record_disagrees_with_group")
+            _, trace = mjt.packed_witness(self.world, record.spec, 0, record.overrides)
+            positions = [entry["path"].position for entry in trace]
+            self.assertEqual(positions, sorted(set(positions)))
+            last = trace[-1]["path"]
+            real = self.world.window.path(last.position)
+            self.assertEqual(last.children, real.children)
+            self.assertNotEqual(last.group, real.group)
+            self.assertEqual(sorted(last.group), sorted(real.group))
+
+    def test_the_valid_witness_proves_the_signed_record_at_the_stored_position(self):
+        valid = mjt.variants(self.world, "packed", 16, 4)[0]
+        witness, _ = mjt.packed_witness(self.world, valid.spec)
+        self.assertNotIn("units", witness)
+        self.assertNotIn("rootHeight", witness)
+        self.assertEqual(int(witness["windowRoot"]), self.world.window.root)
+        for slot, output in enumerate(self.world.sellable[:16]):
+            owner = int(self.key_hashes[output.owner])
+            group = tuple(int(x) for x in witness["group"][slot])
+            children = tuple(tuple(int(c) for c in level) for level in witness["children"][slot])
+            path = wt.PackedPath(int(witness["position"][slot]), group, children)
+            self.assertEqual(wt.packed_root_from_path(output.key, owner, path), self.world.window.root)
+            self.assertEqual(path.position, self.world.window.position_of(output.key))
+
+    def test_the_build_writes_the_packed_world(self):
+        with tempfile.TemporaryDirectory() as directory:
+            mjt.build(self.key_hashes, Path(directory), "packed", 16, 4)
+            world = json.loads((Path(directory) / "world.json").read_text())
+            self.assertEqual(world["window_tree"]["group_bits"], 2)
+            self.assertEqual(world["window_tree"]["levels"], 5)
+            self.assertEqual(world["root"], world["window_tree"]["root"])
+            manifest = json.loads((Path(directory) / "variants" / "manifest.json").read_text())
+            self.assertIn("record_disagrees_with_group", [entry["name"] for entry in manifest])
+            own = json.loads((Path(directory) / "variants" / "valid.own.json").read_text())
+            self.assertEqual(sorted(own), ["children", "group", "position", "windowRoot"])
 
 
 if __name__ == "__main__":

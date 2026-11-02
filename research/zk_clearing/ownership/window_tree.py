@@ -72,6 +72,10 @@ class PathMismatch(WindowTreeError):
     """A path whose children do not hold the running hash at the position's digit."""
 
 
+class RecordMismatch(PathMismatch):
+    """A packed path whose bottom node does not hold (key, owner) at the position's record index."""
+
+
 def leaf_hash(key: int, owner: int, units: int, root_height: int) -> int:
     """Poseidon(key, owner, units, root_height): the leaf of an output in the window tree."""
     for name, number in (("key", key), ("owner", owner), ("units", units), ("root height", root_height)):
@@ -282,3 +286,217 @@ def build_window_tree(
     """The anchor's window tree and its outputs in position order."""
     outputs = window_outputs(model, anchor)
     return WindowTree([leaf_of(output, registry) for output in outputs], radix_bits, levels), outputs
+
+
+# ---------------------------------------------------------------------------
+# The packed layout (ROADMAP item 3, joinedtree/JOINED_TREE.md section 12)
+
+
+PACKED_GROUP_BITS = 2
+PACKED_RADIX_BITS = 3
+PACKED_LEVELS = 5
+
+
+@dataclass(frozen=True)
+class PackedLeaf:
+    """A record of the packed tree: the outpoint's field id and its owner. Units and root height
+    are not stored: no circuit rule reads them, and the builder's set rule decides who is a record."""
+
+    key: int
+    owner: int
+
+
+@dataclass(frozen=True)
+class PackedPath:
+    """What the circuit takes per slot besides the record: the position, the bottom node's
+    `2 * 2**group_bits` fields (key_0, owner_0, key_1, ...) and `levels` groups of `radix` children."""
+
+    position: int
+    group: tuple[int, ...]
+    children: tuple[tuple[int, ...], ...]
+
+    def digits(self, group_bits: int, radix_bits: int) -> tuple[int, list[int]]:
+        """(the record's index in the bottom node, the base-r digits of the upper levels)."""
+        return digits_of_packed(self.position, group_bits, radix_bits, len(self.children))
+
+    def size_bytes(self, radix_bits: int) -> int:
+        """A proof carries the bottom node's other records and the other children per upper level."""
+        records = len(self.group) // 2
+        return 32 * (2 * (records - 1) + len(self.children) * ((1 << radix_bits) - 1))
+
+
+def digits_of_packed(position: int, group_bits: int, radix_bits: int, levels: int) -> tuple[int, list[int]]:
+    total = group_bits + radix_bits * levels
+    if not 0 <= position < 1 << total:
+        raise WindowTreeError(f"position {position} outside {1 << total} records")
+    within = position & ((1 << group_bits) - 1)
+    rest = position >> group_bits
+    mask = (1 << radix_bits) - 1
+    return within, [(rest >> (radix_bits * level)) & mask for level in range(levels)]
+
+
+def packed_root_from_path(key: int, owner: int, path: PackedPath,
+                          group_bits: int = PACKED_GROUP_BITS, radix_bits: int = PACKED_RADIX_BITS) -> int:
+    """Fold a record up its path, mirroring `PackedWindowSale`: the record at the position's low
+    bits must be (key, owner), then select, check and hash per level."""
+    for name, number in (("key", key), ("owner", owner)):
+        if type(number) is not int or not 0 <= number < FIELD:
+            raise WindowTreeError(f"{name} is not a canonical field element")
+    records = 1 << group_bits
+    if len(path.group) != 2 * records:
+        raise WindowTreeError(f"bottom node has {len(path.group)} fields, expected {2 * records}")
+    within, digits = path.digits(group_bits, radix_bits)
+    if path.group[2 * within] != key or path.group[2 * within + 1] != owner:
+        raise RecordMismatch(f"the record at index {within} of the bottom node is not (key, owner)")
+    current = smt.poseidon_n(list(path.group))
+    for level, (digit, group) in enumerate(zip(digits, path.children), start=1):
+        if len(group) != 1 << radix_bits:
+            raise WindowTreeError(f"level {level} has {len(group)} children, expected {1 << radix_bits}")
+        if group[digit] != current:
+            raise PathMismatch(f"level {level}: the child at digit {digit} is not the running hash")
+        current = smt.poseidon_n(list(group))
+    return current
+
+
+class PackedWindowTree:
+    """The dense tree whose bottom nodes hold `2 ** group_bits` records (key, owner) each, with
+    `levels` levels of `2 ** radix_bits`-way nodes above: `2 ** group_bits * radix ** levels` positions.
+
+        bottom[g] = Poseidon(key_0, owner_0, ..., key_{r-1}, owner_{r-1})     r = 2 ** group_bits
+        node      = Poseidon(child_0, ..., child_{R-1})                       R = 2 ** radix_bits
+        empty     = a record of (0, 0); nodes over empty records hash like any other node
+
+    The order, the sort key and the set are those of `WindowTree`. The interface mirrors
+    `WindowTree` (`leaves`, `keys`, `position_of`, `path`, `spliced_path`, `root`, `verify`).
+    """
+
+    def __init__(self, leaves: Sequence[PackedLeaf], group_bits: int = PACKED_GROUP_BITS,
+                 radix_bits: int = PACKED_RADIX_BITS, levels: int = PACKED_LEVELS):
+        if group_bits < 1 or radix_bits < 1 or levels < 1:
+            raise WindowTreeError("group_bits, radix_bits and levels must be at least 1")
+        self.group_bits = group_bits
+        self.radix_bits = radix_bits
+        self.levels = levels
+        self.records = 1 << group_bits
+        self.radix = 1 << radix_bits
+        self.capacity = self.records * self.radix ** levels
+        if len(leaves) > self.capacity:
+            raise CapacityExceeded(f"{len(leaves)} outputs; {self.records} * {self.radix}^{levels} = {self.capacity} positions")
+        self.leaves = list(leaves)
+        self.keys = [leaf.key for leaf in self.leaves]
+        for before, after in zip(self.keys, self.keys[1:]):
+            if not before < after:
+                raise KeysNotAscending(f"key {after} follows {before}")
+        for leaf in self.leaves:
+            for number in (leaf.key, leaf.owner):
+                if type(number) is not int or not 0 <= number < FIELD:
+                    raise WindowTreeError("key or owner is not a canonical field element")
+        self._zero = [smt.poseidon_n([0] * (2 * self.records))]
+        for _ in range(levels):
+            self._zero.append(smt.poseidon_n([self._zero[-1]] * self.radix))
+        self._nodes = [[
+            smt.poseidon_n(list(self._group(index))) for index in range(-(-len(self.leaves) // self.records))
+        ]]
+        for level in range(1, levels + 1):
+            below = self._nodes[-1]
+            padding = self._zero[level - 1]
+            self._nodes.append([
+                smt.poseidon_n([
+                    below[index] if index < len(below) else padding
+                    for index in range(group * self.radix, (group + 1) * self.radix)
+                ])
+                for group in range(-(-len(below) // self.radix))
+            ])
+
+    def _group(self, index: int) -> tuple[int, ...]:
+        """The fields of bottom node `index`: its records, then (0, 0) for positions past the end."""
+        fields: list[int] = []
+        for position in range(index * self.records, (index + 1) * self.records):
+            if position < len(self.leaves):
+                fields += [self.leaves[position].key, self.leaves[position].owner]
+            else:
+                fields += [0, 0]
+        return tuple(fields)
+
+    def __len__(self) -> int:
+        return len(self.leaves)
+
+    @property
+    def root(self) -> int:
+        top = self._nodes[self.levels]
+        return top[0] if top else self._zero[self.levels]
+
+    def _node(self, level: int, index: int) -> int:
+        row = self._nodes[level]
+        return row[index] if index < len(row) else self._zero[level]
+
+    def hash_count(self) -> int:
+        """Poseidon evaluations the build took: one per stored node."""
+        return sum(len(row) for row in self._nodes)
+
+    def position_of(self, key: int) -> int | None:
+        index = bisect.bisect_left(self.keys, key)
+        return index if index < len(self.keys) and self.keys[index] == key else None
+
+    def __contains__(self, key: int) -> bool:
+        return self.position_of(key) is not None
+
+    def insertion_point(self, key: int) -> int:
+        return min(bisect.bisect_left(self.keys, key), self.capacity - 1)
+
+    def path(self, position: int) -> PackedPath:
+        """The bottom node and the children along the path to `position` (a record or an empty position)."""
+        digits_of_packed(position, self.group_bits, self.radix_bits, self.levels)
+        group_index = position >> self.group_bits
+        groups = []
+        for level in range(self.levels):
+            first = (group_index >> (self.radix_bits * (level + 1))) << self.radix_bits
+            groups.append(tuple(self._node(level, first + child) for child in range(self.radix)))
+        return PackedPath(position, self._group(group_index), tuple(groups))
+
+    def prove(self, key: int) -> tuple[PackedLeaf, PackedPath]:
+        position = self.position_of(key)
+        if position is None:
+            raise WindowTreeError(f"key {key} not in the tree")
+        return self.leaves[position], self.path(position)
+
+    def spliced_path(self, position: int, record: tuple[int, int]) -> PackedPath:
+        """The real path at `position` with the record (key, owner) put in place of the stored one
+        and every parent recomputed: it passes every selection check, and its root is the tree's only
+        when the record is what the tree holds there. The strongest forgery a prover can build."""
+        real = self.path(position)
+        within, digits = real.digits(self.group_bits, self.radix_bits)
+        fields = list(real.group)
+        fields[2 * within], fields[2 * within + 1] = record
+        current = smt.poseidon_n(fields)
+        groups = []
+        for digit, group in zip(digits, real.children):
+            group = list(group)
+            group[digit] = current
+            groups.append(tuple(group))
+            current = smt.poseidon_n(group)
+        return PackedPath(position, tuple(fields), tuple(groups))
+
+    def verify(self, leaf: PackedLeaf, path: PackedPath) -> bool:
+        try:
+            return packed_root_from_path(leaf.key, leaf.owner, path, self.group_bits, self.radix_bits) == self.root
+        except PathMismatch:
+            return False
+
+
+def packed_leaf_of(output: utxo_set.Output, registry: Mapping[str, int] | None = None) -> PackedLeaf:
+    return PackedLeaf(output.key, smt.owner_field(output.owner, registry))
+
+
+def build_packed_window_tree(
+    model: utxo_set.SharechainUtxo,
+    anchor: int,
+    registry: Mapping[str, int] | None = None,
+    group_bits: int = PACKED_GROUP_BITS,
+    radix_bits: int = PACKED_RADIX_BITS,
+    levels: int = PACKED_LEVELS,
+) -> tuple[PackedWindowTree, list[utxo_set.Output]]:
+    """The anchor's packed window tree and its outputs in position order."""
+    outputs = window_outputs(model, anchor)
+    return PackedWindowTree([packed_leaf_of(output, registry) for output in outputs],
+                            group_bits, radix_bits, levels), outputs

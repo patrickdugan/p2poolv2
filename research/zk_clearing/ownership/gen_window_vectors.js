@@ -17,7 +17,7 @@ async function main() {
   const P = 21888242871839275222246405745257275088548364400416034343698204186575808495617n;
   const element = (label) => BigInt("0x" + crypto.createHash("sha256").update(label).digest("hex")) >> 3n;
 
-  const result = { source: `circomlibjs ${pkg.version}`, poseidon: [], trees: [] };
+  const result = { source: `circomlibjs ${pkg.version}`, poseidon: [], trees: [], packedTrees: [] };
   const inputs = [
     [1n, 2n, 3n, 4n],
     [0n, 0n, 0n, 0n],
@@ -78,8 +78,60 @@ async function main() {
   tree("radix8-partial", 3, 3, 37, [0, 36, 37, 511]);
   tree("radix8-six-levels", 3, 6, 5, [0, 4, 5, 262143]);
 
+  // The packed layout (window_tree.PackedWindowTree): bottom nodes hash 2^groupBits (key, owner)
+  // records, `levels` levels of radix-way nodes sit above them. `probes` are positions whose bottom
+  // node fields and upper children are recorded.
+  function packedTree(name, groupBits, radixBits, levels, count, probes) {
+    const records = 1 << groupBits;
+    const radix = 1 << radixBits;
+    const keys = [];
+    for (let i = 0; i < count; i++) keys.push(element(`${name}-key-${i}`));
+    keys.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    const leaves = keys.map((key, i) => ({ key, owner: element(`${name}-owner-${i}`) }));
+    const capacity = records * radix ** levels;
+    const fieldsOf = (g) => {
+      const out = [];
+      for (let r = 0; r < records; r++) {
+        const i = g * records + r;
+        out.push(i < leaves.length ? leaves[i].key : 0n, i < leaves.length ? leaves[i].owner : 0n);
+      }
+      return out;
+    };
+    const row0 = [];
+    for (let g = 0; g < capacity / records; g++) row0.push(BigInt(H(fieldsOf(g))));
+    const rows = [row0];
+    for (let level = 1; level <= levels; level++) {
+      const below = rows[level - 1];
+      const row = [];
+      for (let g = 0; g < below.length / radix; g++) row.push(BigInt(H(below.slice(g * radix, (g + 1) * radix))));
+      rows.push(row);
+    }
+    const paths = probes.map((position) => {
+      const groupIndex = Math.floor(position / records);
+      const children = [];
+      for (let level = 0; level < levels; level++) {
+        const first = Math.floor(groupIndex / radix ** (level + 1)) * radix;
+        children.push(rows[level].slice(first, first + radix).map(String));
+      }
+      return { position, group: fieldsOf(groupIndex).map(String), children };
+    });
+    result.packedTrees.push({
+      name, groupBits, radixBits, levels,
+      leaves: leaves.map((l) => ({ key: String(l.key), owner: String(l.owner) })),
+      groupHashes: row0.slice(0, Math.ceil(leaves.length / records)).map(String),
+      root: String(rows[levels][0]),
+      paths,
+    });
+  }
+
+  packedTree("packed-empty", 1, 1, 2, 0, [0, 3]);
+  packedTree("packed-one", 1, 1, 3, 1, [0, 1, 15]);
+  packedTree("packed-partial-binary", 1, 1, 3, 11, [0, 10, 11, 15]);
+  packedTree("packed-four-records", 2, 3, 2, 70, [0, 69, 70, 255]);
+  packedTree("packed-production-shape", 2, 3, 5, 37, [0, 36, 37, 131071]);
+
   fs.writeFileSync(out, JSON.stringify(result, null, 1));
-  console.log(`wrote ${out}: ${result.poseidon.length} hashes, ${result.trees.length} trees`);
+  console.log(`wrote ${out}: ${result.poseidon.length} hashes, ${result.trees.length} trees, ${result.packedTrees.length} packed trees`);
   process.exit(0);
 }
 

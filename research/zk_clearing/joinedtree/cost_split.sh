@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Constraint count of every part of the joined signed-tree circuits, each compiled as its own main
 # with circom --O2 (compile only, nothing is proved), and the sum of the parts per membership
-# kind. Optional WHOLE_BIN, WHOLE_R8 and WHOLE_SMT give the compiled whole circuit's count (from a
+# kind. Optional WHOLE_BIN, WHOLE_R8, WHOLE_PK and WHOLE_SMT give the compiled whole circuit's count (from a
 # run_size.sh results file) and the script prints the difference.
 #
 # Usage: bash research/zk_clearing/joinedtree/cost_split.sh <sale slots> <buyer slots> <node_modules dir> <work dir>
@@ -43,6 +43,10 @@ statement4=$(count part_statement4 "PoseidonChunked($STATEMENT)" "$CIRCUITS/clea
 statement5=$(count part_statement5 "PoseidonChunked($((STATEMENT + 1)))" "$CIRCUITS/clearing_tree_signed.circom")
 sale_bin=$(count part_sale_bin "WindowSale(1, 17)" "$OWNERSHIP/window_sale.circom")
 sale_r8=$(count part_sale_r8 "WindowSale(3, 6)" "$OWNERSHIP/window_sale.circom")
+sale_pk=$(count part_sale_pk "PackedWindowSale(2, 3, 5)" "$OWNERSHIP/window_sale.circom")
+group_pk=$(count part_group_pk "WindowGroup(2)" "$OWNERSHIP/window_sale.circom")
+order_pk=$(count part_order_pk "WindowOrder(17)" "$OWNERSHIP/window_sale.circom")
+digits_pk=$(count part_digits_pk "Num2Bits(17)" "circomlib/circuits/bitify.circom")
 sale_smt=$(count part_sale_smt "OwnedSale(40)" "$OWNERSHIP/owned_sale.circom")
 order_bin=$(count part_order_bin "WindowOrder(17)" "$OWNERSHIP/window_sale.circom")
 order_r8=$(count part_order_r8 "WindowOrder(18)" "$OWNERSHIP/window_sale.circom")
@@ -57,6 +61,7 @@ digits_r8=$(count part_digits_r8 "Num2Bits(18)" "circomlib/circuits/bitify.circo
 overhead=$((statement5 - statement4))
 sum_bin=$((base + SALES * sale_bin + (SALES - 1) * order_bin + overhead))
 sum_r8=$((base + SALES * sale_r8 + (SALES - 1) * order_r8 + overhead))
+sum_pk=$((base + SALES * sale_pk + (SALES - 1) * order_pk + overhead))
 sum_smt=$((base + SALES * sale_smt + overhead))
 
 printf 'joined signed tree %sx%s (depth %s), compile-only parts\n' "$SALES" "$BUYERS" "$DEPTH"
@@ -72,16 +77,21 @@ printf '%-58s %10s\n' "  leaf Poseidon(4)" "$leaf4"
 printf '%-58s %10s\n' "WindowSale, eight-way, 6 levels (per sale slot)" "$sale_r8"
 printf '%-58s %10s\n' "  one WindowLevel(3): Poseidon(8) $node8 + 7 selects" "$level_r8"
 printf '%-58s %10s\n' "  18 digit bits, Num2Bits(18)" "$digits_r8"
+printf '%-58s %10s\n' "PackedWindowSale, 4 records + 5 eight-way levels (per sale slot)" "$sale_pk"
+printf '%-58s %10s\n' "  bottom node WindowGroup(2): Poseidon(8) $node8 + 6 selects" "$group_pk"
+printf '%-58s %10s\n' "  17 digit bits, Num2Bits(17)" "$digits_pk"
 printf '%-58s %10s\n' "OwnedSale(40): M5's SMTVerifier (per sale slot)" "$sale_smt"
 printf '%-58s %10s\n' "WindowOrder(17), per neighbouring pair" "$order_bin"
 printf '%-58s %10s\n' "WindowOrder(18), per neighbouring pair" "$order_r8"
 printf '%-58s %10s\n' "sum, binary window: base + S x sale + (S-1) x order + root" "$sum_bin"
 printf '%-58s %10s\n' "sum, eight-way window" "$sum_r8"
+printf '%-58s %10s\n' "WindowOrder(17) for the packed tree, per neighbouring pair" "$order_pk"
+printf '%-58s %10s\n' "sum, packed window: base + S x sale + (S-1) x order + root" "$sum_pk"
 printf '%-58s %10s\n' "sum, M5's sparse tree" "$sum_smt"
-for kind in BIN R8 SMT; do
+for kind in BIN R8 PK SMT; do
   var="WHOLE_$kind"
   if [ -n "${!var:-}" ]; then
-    case "$kind" in BIN) sum=$sum_bin ;; R8) sum=$sum_r8 ;; SMT) sum=$sum_smt ;; esac
+    case "$kind" in BIN) sum=$sum_bin ;; R8) sum=$sum_r8 ;; PK) sum=$sum_pk ;; SMT) sum=$sum_smt ;; esac
     printf '%-58s %10s\n' "compiled whole circuit ($kind) minus sum of parts" "$((${!var} - sum))"
   fi
 done

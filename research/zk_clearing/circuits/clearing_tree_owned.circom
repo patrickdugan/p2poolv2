@@ -23,8 +23,10 @@ pragma circom 2.1.8;
 //   OwnedSignedTreeWindow  the dense window tree of ownership/window_tree.py
 //                          (ownership/circuits/window_sale.circom)
 //   OwnedSignedTreeSmt     M5's 40-level sparse Merkle tree (ownership/circuits/owned_sale.circom)
-// The window variant also needs the active sale slots to be a prefix with strictly rising tree
-// positions, which is how it keeps two slots from naming one output.
+//   OwnedSignedTreePacked  the window tree with (key, owner) records in its bottom nodes
+//                          (joinedtree/JOINED_TREE.md section 12)
+// The window variants also need the active sale slots to be a prefix with strictly rising tree
+// positions, which is how they keep two slots from naming one output.
 //
 // Not proven here, as in M10 and M11: that the root is the root of a canonical anchor or of a
 // registry-correct tree, that a sold output stays unspent after the anchor, or that escrowId
@@ -253,3 +255,122 @@ template OwnedSignedTreeSmt(saleSlots, buyerSlots, depth, nLevels) {
         }
     }
 }
+
+// The packed variant (ROADMAP item 3): the same join with PackedWindowSales, whose records hold
+// (key, owner) only. The witness has no units or rootHeight; each sale slot carries the bottom
+// node's fields (`group`) and the `levels` groups of children above it.
+template OwnedSignedTreePacked(saleSlots, buyerSlots, depth, groupBits, radixBits, levels) {
+    var radix = 1 << radixBits;
+    var records = 1 << groupBits;
+
+    // The one public signal.
+    signal input statementHash;
+
+    // The ownership root, bound to statementHash.
+    signal input windowRoot;
+
+    // The statement's values.
+    signal input funding[buyerSlots];
+    signal input feeBudget[buyerSlots];
+    signal input refund[buyerSlots];
+    signal input totalPayout;
+    signal input buyerId[buyerSlots];
+    signal input batchHeight;
+
+    // v1 witness.
+    signal input price[saleSlots];
+    signal input activeSale[saleSlots];
+    signal input priceInverse[saleSlots];
+    signal input selector[saleSlots][buyerSlots];
+    signal input activeBuyer[buyerSlots];
+    signal input buyerCountInverse[buyerSlots];
+    signal input activeCountInverse;
+    signal input saleId[saleSlots];
+    signal input sellerId[saleSlots];
+
+    // Seller orders.
+    signal input sellerPayoutId[saleSlots];
+    signal input orderExpiry[saleSlots];
+    signal input sellerAx[saleSlots];
+    signal input sellerAy[saleSlots];
+    signal input orderR8x[saleSlots];
+    signal input orderR8y[saleSlots];
+    signal input orderS[saleSlots];
+
+    // Buyer escrow terms.
+    signal input escrowId[buyerSlots];
+    signal input feeCap[buyerSlots];
+    signal input refundScriptId[buyerSlots];
+    signal input escrowExpiry[buyerSlots];
+    signal input buyerAx[buyerSlots];
+    signal input buyerAy[buyerSlots];
+    signal input escrowR8x[buyerSlots];
+    signal input escrowR8y[buyerSlots];
+    signal input escrowS[buyerSlots];
+
+    // The sold outputs records and paths in the packed window tree.
+    signal input position[saleSlots];
+    signal input group[saleSlots][2 * records];
+    signal input children[saleSlots][levels][radix];
+
+    component signedTree = SignedClearingTree(saleSlots, buyerSlots, depth, 1);
+    component owned = PackedWindowSales(saleSlots, groupBits, radixBits, levels);
+
+    signedTree.statementHash <== statementHash;
+    signedTree.extra[0] <== windowRoot;
+    signedTree.totalPayout <== totalPayout;
+    signedTree.batchHeight <== batchHeight;
+    signedTree.activeCountInverse <== activeCountInverse;
+    for (var buyer = 0; buyer < buyerSlots; buyer++) {
+        signedTree.funding[buyer] <== funding[buyer];
+        signedTree.feeBudget[buyer] <== feeBudget[buyer];
+        signedTree.refund[buyer] <== refund[buyer];
+        signedTree.buyerId[buyer] <== buyerId[buyer];
+        signedTree.activeBuyer[buyer] <== activeBuyer[buyer];
+        signedTree.buyerCountInverse[buyer] <== buyerCountInverse[buyer];
+        signedTree.escrowId[buyer] <== escrowId[buyer];
+        signedTree.feeCap[buyer] <== feeCap[buyer];
+        signedTree.refundScriptId[buyer] <== refundScriptId[buyer];
+        signedTree.escrowExpiry[buyer] <== escrowExpiry[buyer];
+        signedTree.buyerAx[buyer] <== buyerAx[buyer];
+        signedTree.buyerAy[buyer] <== buyerAy[buyer];
+        signedTree.escrowR8x[buyer] <== escrowR8x[buyer];
+        signedTree.escrowR8y[buyer] <== escrowR8y[buyer];
+        signedTree.escrowS[buyer] <== escrowS[buyer];
+    }
+
+    owned.windowRoot <== windowRoot;
+    for (var sale = 0; sale < saleSlots; sale++) {
+        signedTree.price[sale] <== price[sale];
+        signedTree.activeSale[sale] <== activeSale[sale];
+        signedTree.priceInverse[sale] <== priceInverse[sale];
+        for (var buyer = 0; buyer < buyerSlots; buyer++) {
+            signedTree.selector[sale][buyer] <== selector[sale][buyer];
+        }
+        signedTree.saleId[sale] <== saleId[sale];
+        signedTree.sellerId[sale] <== sellerId[sale];
+        signedTree.sellerPayoutId[sale] <== sellerPayoutId[sale];
+        signedTree.orderExpiry[sale] <== orderExpiry[sale];
+        signedTree.sellerAx[sale] <== sellerAx[sale];
+        signedTree.sellerAy[sale] <== sellerAy[sale];
+        signedTree.orderR8x[sale] <== orderR8x[sale];
+        signedTree.orderR8y[sale] <== orderR8y[sale];
+        signedTree.orderS[sale] <== orderS[sale];
+
+        // The shared signals: the same saleId and sellerId feed the signature check above and
+        // the membership check here.
+        owned.activeSale[sale] <== activeSale[sale];
+        owned.saleId[sale] <== saleId[sale];
+        owned.sellerId[sale] <== sellerId[sale];
+        owned.position[sale] <== position[sale];
+        for (var index = 0; index < 2 * records; index++) {
+            owned.group[sale][index] <== group[sale][index];
+        }
+        for (var l = 0; l < levels; l++) {
+            for (var index = 0; index < radix; index++) {
+                owned.children[sale][l][index] <== children[sale][l][index];
+            }
+        }
+    }
+}
+

@@ -34,7 +34,8 @@ circuit and 11,438 in M5's membership proof, so 1,024 sales come to 17.5 million
    (section 7).
 4. **1,024 sales come to 10.3 million constraints (binary) or 8.6 million (eight-way), against
    17.5 million, *est.*** Phase-1 power 24 instead of 25. The eight-way tree misses power 23
-   (8,388,608) by 2.7% (section 8).
+   (8,388,608) by 2.7% (section 8). The packed layout of section 12 fits: 8,309,063 constraints at
+   1,024 sales, 79,545 under 2^23.
 
 ## 1. The membership statement
 
@@ -366,7 +367,8 @@ Basis:
 - **A wider node buys 37% of the membership proof.** `Poseidon(8)` hashes three bits for 402
   constraints, against 720 for three `Poseidon(2)`. The price is proof size for the seller (1,344 B
   against 544 B).
-- **Power 23 is out of reach for this design.** The eight-way tree at 8,618,310 constraints is
+- **Power 23 is out of reach for the eight-way design (section 12 reaches it with a packed
+  layout).** The eight-way tree at 8,618,310 constraints is
   229,702 over 2^23. M11's circuit takes 5,756,001 of the 8,388,608, which leaves 2,570 a slot for
   membership and order; the eight-way slot with its order check is 2,795.
 - **The next lever is the shared top of the tree.** Sorted positions mean the sold leaves'
@@ -456,3 +458,226 @@ node research/zk_clearing/ownership/extract_poseidon_constants.js <node_modules>
 | `joinedtree/make_joined_tree.py`, `sign_tree.js`, `statement_joined_tree.js`, `fixtures.sh` | The world, the signing, the statement hash with the root, the `run.sh` hook |
 | `joinedtree/run_size.sh`, `cost_split.sh`, `test_make_joined_tree.py` | The run and its checks, the parts, 17 tests |
 | `joinedtree/results/` | Raw outputs of the runs, the splits and the tree builds |
+
+## 12. Under power 23: the packed layout (ROADMAP item 3)
+
+Measured 2026-11-02 on the same stack as above (circom 2.2.2, snarkjs 0.7.5, circomlib 2.0.5,
+circomlibjs 0.1.7, Node 22.12) under WSL2, with the 1,024-slot compiles on the zk VPS (8 cores, 31 GB).
+The eight-way tree of section 6 missed 2^23 = 8,388,608 by 229,702 constraints at 1,024×8, about
+225 a sale slot. The packed layout removes 301 a slot and puts the joined circuit at **8,309,063
+constraints, 79,545 under 2^23 (0.95%)**, with all 1,024 sale slots.
+
+### 12.1 What changed
+
+The eight-way slot paid for a leaf hash (`Poseidon(4)`, 297) and then six levels of `Poseidon(8)`
+(409 each with its seven selects). The packed tree drops the separate leaf hash. Its bottom node
+hashes four records directly:
+
+    bottom[g] = Poseidon(key_0, owner_0, key_1, owner_1, key_2, owner_2, key_3, owner_3)     8 inputs
+    node      = Poseidon(child_0, ..., child_7)                                              5 levels above
+    record    = (key, owner); an empty position holds (0, 0)
+
+The position has 17 bits: the low two pick the record in the bottom node, then three bits per
+level over five eight-way levels. Capacity is 4 × 8^5 = 131,072. The slot checks, in
+`ownership/circuits/window_sale.circom` (`WindowGroup`, `PackedWindowSale`, `PackedWindowSales`):
+
+- the record at the position's low two bits is `(saleId, sellerId)` (two 4-way selects, 6
+  constraints, then the bottom node's `Poseidon(8)`);
+- five `WindowLevel(3)` levels, each: the child at the digit is the running hash, and the parent
+  is `Poseidon(8)` over the children;
+- the root equals `windowRoot` when the slot is active, and `WindowOrder(17)` on each neighbouring
+  pair, unchanged from the binary tree (19 constraints).
+
+`clearing_tree_owned.circom` gains `OwnedSignedTreePacked`, the join of section 4 with
+`PackedWindowSales`. M11's `SignedClearingTree` is untouched: no line of `clearing_tree_signed.circom`,
+`signed_terms.circom` or any M11 circuit changed for this, and the statement is the same
+`5 + 4B` values with the root last.
+
+**Per sale slot, compiled** (`window_sale_pk_n1`, one slot, `--O2`): 2,474 = bottom node 408
+(`Poseidon(8)` 402 + 6 selects) + 5 × 409 + 17 digit bits + 4 (boolean, two padding rules, root
+check). Section 6 had 2,775 for the eight-way slot, 4,417 for the binary.
+
+### 12.2 What it proves, and what it drops
+
+The three facts that matter are the ones of section 2, unchanged:
+
+1. **The leaf binds the sold outpoint and its owner.** A passing slot has a bottom node whose
+   record at the position's index is `(saleId, sellerId)` and a chain of five `Poseidon(8)`
+   hashes from that node to `windowRoot`. The same `saleId` and `sellerId` feed M11's signature
+   check, so the key that signed the order is the owner the tree stores for the sold outpoint.
+2. **Positions rise.** `WindowOrder(17)`: the active slots are a prefix and positions strictly
+   increase, which refuses the same output in two slots (given one position per outpoint).
+3. **The statement hash commits to everything it did.** The root is in the hashed statement as
+   before; the 15 invalid inputs and the valid ones below are refused or accepted at the
+   same rules.
+
+**Dropped: `units` and `root_height` are no longer in the tree.** In the eight-way and binary
+trees the leaf was `Poseidon(key, owner, units, root_height)`, but no circuit rule reads `units`
+or `rootHeight`; they were private inputs that only fed the leaf hash (and padding slots had to
+carry zeros). Who is a leaf is decided by the builder's set rule (section 1: unspent at the
+anchor, P2TR, `min_units`, root height in the window), and a watcher rebuilds the set before it
+presigns a root. A record of `(key, owner)` commits to the same set, so a root that included an
+output outside the window would still differ from the watcher's. What is lost is that a tree can
+no longer be audited for the units and height of a leaf from the root alone: that comes from the
+sharechain replay, which the watcher runs in any case. A third field per record cannot fit
+under 2^23: three fields in a bottom node of two records (`Poseidon(6)`, 354) cost 2,664 a slot, and
+four records of three fields (`Poseidon(12)`, 504) cost 2,579, both from compiled Poseidon costs
+(*est.*), against a budget of 2,551.
+
+**Same-width hashes at two depths.** The bottom node and the nodes above it are all `Poseidon(8)`,
+where the earlier leaf (`Poseidon(4)`) differed in width from the nodes. That does not let a node
+be read as a bottom node: the circuit's path has a fixed length of six hashes from a record to
+the root, the root fixes its preimage, that preimage fixes the next one down, and so on, so under
+collision resistance the bottom node of a passing slot is exactly the node the tree holds at
+depth six, and its eight fields are the records the builder put there. `test_window_tree.py`
+checks the fold against circomlibjs, and the fixtures include the forgery that splices a claimed
+record into the real path (passes every selection check, fails at the root).
+
+**Capacity is halved against the eight-way tree.** 131,072 positions hold today's 119,953 live
+outputs (91.5% full), as the binary tree did. Past the limit a watcher raises `min_units`
+(`OWNERSHIP.md` 3.4). A sixth, binary level restores 262,144 positions for about +243 a slot, which
+puts the 1,024×8 circuit at 8,557,000 constraints (*est.*), over 2^23.
+
+### 12.3 Other ways to find 225 a slot
+
+Poseidon constraints compiled with circom 2.2.2 `--O2`, by input count: 2: 240, 3: 261, 4: 297,
+5: 321, 6: 354, 7: 381, 8: 402, 9: 417, 10: 459, 11: 465, 12: 504, 14: 537, 16: 609. The budget is
+2,551 a slot (with a 19 constraint order check), against the 2,775 + 20 of section 6.
+
+| Slot | Per slot | Basis | Fits 2^23 |
+|---|---|---|---|
+| Eight-way, six levels (section 6) | 2,775 | compiled | no |
+| 5 eight-way levels + a 4-way top (17 bits, 131,072 positions), leaf `Poseidon(4)` | about 2,665 | *est.*: saves 105 on the top node, 3 selects less, 1 digit bit less, +6 | no |
+| the same with leaf `Poseidon(key, owner)` | about 2,606 | *est.*: −57 for `Poseidon(2)`, −2 padding rules | no |
+| bottom node of 8 records (`Poseidon(16)`, 3 bits), 4 eight-way levels, a 4-way top | about 2,580 | *est.* | no |
+| **Packed: 4 records in the bottom node, 5 eight-way levels** | **2,474** | compiled | **yes** |
+
+The binary tree with one 4-way level is no better than the eight-way tree (`Poseidon(2)` hashes one
+bit for 240, `Poseidon(8)` three for 402), so the saving has to come from the leaf hash and not from
+the shape of the levels. Removing duplicated hashing between M11's sale leaf (`Poseidon(6)` over
+the sale's fields, 354) and the order message (`Poseidon(6)`, 354) would save about 90 a slot (est.) but
+changes M11's `saleCommitment` and its reference hash, so it was not done. A
+cheaper `PoseidonChunked` saves nothing a slot: the statement hash is 2,022 constraints once.
+
+### 12.4 Results
+
+Compiled counts, `--O2`. The 1,024×8 joined circuit is a sum of compiled parts: the whole circuit
+was not compiled.
+
+| Part | 1,024×8 | How |
+|---|---|---|
+| M11's circuit, `SignedClearingTree(1024, 8, 10, 0)` | 5,756,001 | sum of compiled parts, recompiled on the VPS (`results/vps-m11-parts-1024x8.txt`), same as `signedtree/results/cost-split-1024x8-est.txt` |
+| The root in the statement hash | 249 | compiled (`PoseidonChunked(37)` − `PoseidonChunked(36)`, B = 8) |
+| Membership and order, `PackedWindowSales(1024, 2, 3, 5)` | **2,552,813** | **compiled whole** on the VPS: 11 min 28 s, 21.2 GB; = 1,024 × 2,474 + 1,023 × 19 |
+| **Joined circuit** | **8,309,063** | sum |
+| Against 2^23 = 8,388,608 | **−79,545 (−0.95%)** | |
+| Against the eight-way tree (8,618,310) | −309,247 (−3.6%) | |
+| Per sale slot | 8,115 | |
+
+The sum of parts equals the compiled whole at the three sizes that were compiled whole:
+
+| | 16×4 | 32×8 | 64×8 | 1,024×8 |
+|---|---|---|---|---|
+| M11's circuit | 112,921 | 225,601 | 404,001 | 5,756,001 |
+| Root | 15 | 249 | 249 | 249 |
+| Membership (2,474 a slot) | 39,584 | 79,168 | 158,336 | 2,533,376 |
+| Order (19 a pair) | 285 | 589 | 1,197 | 19,437 |
+| **Sum** | **152,805** | **305,607** | **563,783** | **8,309,063** |
+| Compiled whole | 152,805 | 305,607 | **563,783** | not compiled |
+| Eight-way (section 6) | 157,636 | 315,270 | 583,110 | 8,618,310 |
+
+**Runs** (`run_size.sh pk`, `groth16/run.sh`, M6's power-20 phase 1, insecure deterministic beacon):
+
+| | Packed 16×4 | Packed 32×8 |
+|---|---|---|
+| Constraints | 152,805 | 305,607 |
+| Compile | 48.3 s, 1.77 GiB | 41.9 s, 1.91 GiB |
+| Phase 2 (setup + beacon) | 193.1 s, 2.09 GiB | 211.3 s, 3.43 GiB |
+| Proving key | 141.7 MB | 283.4 MB |
+| Prove (snarkjs) | 11.6 s, 2.98 GiB | 12.9 s, 4.19 GiB |
+| Verify (CLI) | 0.77 s | 0.67 s |
+| Proof, public signals | 256 B, 1 | 256 B, 1 |
+| Verifying key sha256 | `a5bc11e6…` | `119ecaa0…` |
+
+Both pass every check of section 5: the valid proof verifies and its public signal equals
+circomlibjs's `statementHash` over the 21 or 37 values (last: the tree's root); the re-split
+batch proves a different hash; a changed public signal, a signal written as `x + r` and a forged
+`.wtns` are rejected (the forged witness fails at constraint 149,033 and 297,986); the padded
+batch satisfies the R1CS. The raw outputs are `results/run-pk_16x4.txt` and `run-pk_32x8.txt`.
+The 32×8 prove peaked at 4.19 GiB, over the 4 GiB per job that was budgeted. A 64×8 run was not made: its prove
+would peak near 6 GiB (the eight-way 64×8 took 5.88 GiB), so 64×8 is compile-only, above.
+
+**Fifteen invalid inputs, refused at the rule they break**, at 16×4 and 32×8, by the first template
+of the join (`run_size.sh` also checks that the Python model predicts the same template):
+
+| Input | Refused in |
+|---|---|
+| `signer_not_registered_owner`, `signer_is_another_registered_seller`, `unregistered_owner_output`, `output_spent_before_anchor`, `output_expired`, `output_immature`, `wrong_window_root`, `member_leaf_at_wrong_position` | `PackedWindowSale` (the record or the root) |
+| `position_disagrees_with_path` (the position one bottom node up) | `WindowLevel` |
+| `record_disagrees_with_group` (new: the bottom node's records at the position's index and its neighbour's swapped) | `WindowGroup` |
+| `duplicate_output_two_slots`, `slots_out_of_position_order`, `hole_in_active_slots` | `WindowOrder` |
+| `bad_order_signature` | `EdDSAPoseidonVerifier` |
+| `statement_hash_omits_root` | `SignedClearingTree` |
+
+The eight-way and binary circuits are unchanged: `window_sale.circom` and
+`clearing_tree_owned.circom` only gained templates.
+
+**The packed tree at production size.** `bench_window.py build --packed` builds the tree over 119,953
+synthetic outputs (random 253-bit keys and owners) in 34,281 `Poseidon(8)` evaluations (the
+eight-way tree needed 119,953 `Poseidon(4)` + 17,146 `Poseidon(8)`), 151 s in CPython on a loaded
+core. `window_sale_pk_n1` takes one of its records as a valid witness: it satisfies the R1CS and proves in 1.52 s
+(setup 15.95 s, verify 0.71 s), and the proof's first public signal is the build's root. A wrong
+owner is refused in `PackedWindowSale` and a position one bottom node off in `WindowLevel`
+(`results/production-tree-one-slot-pk.txt`). A seller's proof is 6 other record fields and 35
+siblings: 1,312 B, against 1,344 B for the eight-way tree.
+
+### 12.5 1,024×8 at power 23 (*est.*)
+
+| | Packed, 1,024×8 |
+|---|---|
+| Constraints | 8,309,063 (97.6% of 2^23) |
+| Phase-1 power | **23** (2^23 = 8,388,608); the file is about 9.7 GB |
+| Proving key | about 8.0 GB (the eight-way 8.3 GB scaled by the constraint ratio 0.964) |
+| Prove (snarkjs) | about 430 to 480 s, scaled from the eight-way estimate of section 8 |
+| Compile, setup | not measured: the 1,024-slot membership part alone compiled in 21.2 GB; the whole circuit was not attempted on the 31 GB VPS |
+
+No 1,024-slot proof was made. The prove and setup figures scale the eight-way 64×8 measurements
+and carry the same uncertainty as section 8.
+
+### 12.6 Not run, not covered
+
+- **The joined circuit at 1,024×8** is a sum of compiled parts. Its M11 half is a sum (exact at the
+  three M11 builds compiled whole, 16×4, 64×8 and 128×8, and at every joined build). The compiled 1,024-slot part is the membership.
+- **A 64×8 run**, setup and proof (compile only).
+- **Units and root height** are not in the packed tree (12.2). Nothing in the circuits used them.
+- **Capacity** is 131,072, as the binary tree's.
+- **BitVM** on this statement, **incremental maintenance**, **a real node store** and **the registry in
+  motion** stay as in section 10. Non-spend after the anchor is as in `OWNERSHIP.md` section 7;
+  nothing here assumes the sharechain enforces a timelock.
+- **The M16 files, `bitvm/` and M11's circuits** were not touched. A concurrent change to the expiry
+  rule in `clearing_tree_signed.circom` is constraint-neutral and sat in the working tree during
+  these compiles.
+
+### 12.7 Reproduce
+
+```sh
+POWER=20 PTAU=/path/to/pot20_final.ptau \
+  bash research/zk_clearing/joinedtree/run_size.sh pk 32 8 /tmp/zkc-joined-pk
+WHOLE_PK=305607 bash research/zk_clearing/joinedtree/cost_split.sh 32 8 <node_modules> /tmp/zkc-split-32
+python3 research/zk_clearing/ownership/bench_window.py build --packed --write-input /tmp/pk-in
+circom --r1cs --O2 -l <node_modules> research/zk_clearing/joinedtree/circuits/owned_tree_pk_1024x8.circom   # needs more than 31 GB
+```
+
+Tests: `ownership` 148 (16 new for the packed tree, against circomlibjs vectors in
+`window_vectors.json`, regenerated by `gen_window_vectors.js`), `joinedtree` 24 (7 new).
+
+| File | Role |
+|---|---|
+| `ownership/circuits/window_sale.circom` | `WindowGroup`, `PackedWindowSale`, `PackedWindowSales` |
+| `ownership/circuits/window_sale_pk_n1.circom`, `_n16.circom` | standalone mains |
+| `circuits/clearing_tree_owned.circom` | `OwnedSignedTreePacked` |
+| `joinedtree/circuits/owned_tree_pk_{16x4,32x8,64x8,1024x8}.circom` | the mains |
+| `ownership/window_tree.py` | `PackedWindowTree`, `PackedPath`, `packed_root_from_path` |
+| `ownership/bench_window.py`, `gen_window_vectors.js`, `window_vectors.json` | the production-size build and the circomlibjs vectors |
+| `joinedtree/make_joined_tree.py`, `run_size.sh`, `cost_split.sh`, `fixtures.sh` | the `packed` membership, the `pk` kind and the packed parts |
+| `joinedtree/results/` | `run-pk_*`, `cost-split-pk-*`, `production-tree-one-slot-pk.txt`, `vps-*` |

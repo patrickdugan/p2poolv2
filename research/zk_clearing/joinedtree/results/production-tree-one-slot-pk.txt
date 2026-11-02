@@ -1,0 +1,14 @@
+== window_sale_pk_n1 on the 119,953-leaf packed tree
+non-linear constraints: 2474
+linear constraints: 0
+[INFO]  snarkJS: WITNESS CHECKING FINISHED SUCCESSFULLY
+rejected position_off_by_one_bottom_node.json: Error in template WindowLevel_83 line: 82
+rejected wrong_owner.json: Error in template PackedWindowSale_84 line: 283
+setup 15.95 s 449380 KiB
+prove 1.52 s 435980 KiB
+[INFO]  snarkJS: OK!
+verify 0.71 s 304296 KiB (repeat; the first run printed a negative time when the VM clock stepped back)
+public signals: ["8340268716140067603667932604038301952462295595539335555423573432872297423369","1","7246251273691723357781703612401426465897298324057853054520648515681612940462","5703306327572890195386507543925299387099212028794719765662375541439806635801"]
+tree root from the build: 8340268716140067603667932604038301952462295595539335555423573432872297423369
+tree build (bench_window.py build --packed):
+{"tree": "window packed (4 records per bottom node, 5 eight-way levels)", "leaves": 119953, "levels": 5, "capacity": 131072, "root": "8340268716140067603667932604038301952462295595539335555423573432872297423369", "seconds": 151.1, "poseidon_by_inputs": {"8": 34281}, "evaluations": 34281, "proof_bytes": 1312}

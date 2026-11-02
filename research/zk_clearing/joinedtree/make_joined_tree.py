@@ -3,7 +3,7 @@ the window tree and M5's tree, a batch of any power-of-two size, and every varia
 
     python3 make_joined_tree.py labels                                  > labels.json
     python3 make_joined_tree.py build <key hashes.json> <out dir> --sales S --buyers B \\
-        --membership window|smt [--radix-bits K]
+        --membership window|packed|smt [--radix-bits K]
 
 `labels` prints the BabyJubjub order-key labels the world needs. `joined/sign_joined.js keyhashes`
 turns them into `{label: Poseidon(Ax, Ay)}`, and `build` then writes, under <out dir>:
@@ -71,6 +71,8 @@ SALE_ROW_KEYS = ("price", "activeSale", "priceInverse", "saleId", "sellerId", "s
 # calculator's error, by membership kind.
 SALE = "WindowSale"
 LEVEL = "WindowLevel"
+GROUP = "WindowGroup"
+PACKED_SALE = "PackedWindowSale"
 ORDER = "WindowOrder"
 SMT = "SMTVerifier"
 EDDSA = "EdDSAPoseidonVerifier"
@@ -88,7 +90,7 @@ class World:
     registry: register.Registry
     model: object
     smt_tree: smt.SparseMerkleTree
-    window: wt.WindowTree
+    window: "wt.WindowTree | wt.PackedWindowTree"
     window_outputs: list  # in position order
     radix_bits: int
     outputs: dict  # name -> utxo_set.Output
@@ -96,7 +98,7 @@ class World:
     sellable: list  # window outputs a registered key owns, in position order
 
 
-def build_world(key_hashes: dict, radix_bits: int = 1, levels: int | None = None) -> World:
+def build_world(key_hashes: dict, radix_bits: int = 1, levels: int | None = None, packed: bool = False) -> World:
     registrations = []
     for name in REGISTERED:
         aux = hashlib.sha256(f"{mj.DOMAIN}/aux/{name}/1".encode()).digest()
@@ -113,7 +115,10 @@ def build_world(key_hashes: dict, radix_bits: int = 1, levels: int | None = None
     model = accumulator.model
     smt_tree = model.build_tree(mj.TIP, owners)
     assert accumulator.root == smt_tree.root
-    window, window_outputs = wt.build_window_tree(model, mj.TIP, owners, radix_bits, levels)
+    if packed:
+        window, window_outputs = wt.build_packed_window_tree(model, mj.TIP, owners)
+    else:
+        window, window_outputs = wt.build_window_tree(model, mj.TIP, owners, radix_bits, levels)
 
     lower, upper = mj.PARAMS.window(mj.TIP)
     coinbases = {
@@ -211,6 +216,73 @@ def claim_of(world: World, spec: dict, slot: int):
         return False, 0, 0, None
     key = int(inputs["saleId"][slot])
     return True, key, int(world.key_hashes[spec["sellerKeyLabels"][slot]]), world.by_key[key]
+
+
+def packed_witness(world: World, spec: dict, root_offset: int = 0, overrides: dict | None = None):
+    """The circuit inputs of PackedWindowSales for a spec, and the records and paths they claim.
+
+    The same forgeries as `window_witness`, on the packed tree. A slot that names a member with the
+    right owner gets the real path; anything else gets the real path with the claimed record
+    spliced in and every parent recomputed. `overrides[slot]` is 'position_off_path' (the position
+    is one bottom node higher than the path's), 'record_off_group' (the bottom node's record at the
+    position's index is its neighbour's, the two swapped) or 'member_at_wrong_position' (the claimed record spliced into
+    the path one position higher). The overrides go on the last slot, so the positions still rise.
+    """
+    tree = world.window
+    overrides = overrides or {}
+    positions, groups, children, trace = [], [], [], []
+    next_free = len(tree)
+    for slot in range(len(spec["inputs"]["saleId"])):
+        active, key, seller, output = claim_of(world, spec, slot)
+        if not active:
+            record = (0, 0)
+            path = tree.spliced_path(0, record)
+        else:
+            record = (key, seller)
+            position = tree.position_of(key)
+            if position is None:
+                position, next_free = next_free, next_free + 1
+            stored = tree.leaves[position] if position < len(tree) else None
+            path = tree.path(position) if stored == wt.PackedLeaf(*record) else tree.spliced_path(position, record)
+            mode = overrides.get(slot)
+            if mode == "position_off_path":
+                path = wt.PackedPath(position + tree.records, path.group, path.children)
+            elif mode == "record_off_group":
+                fields = list(path.group)
+                other = 2 * ((position + 1) % tree.records)
+                mine = 2 * (position % tree.records)
+                fields[mine:mine + 2], fields[other:other + 2] = fields[other:other + 2], fields[mine:mine + 2]
+                path = wt.PackedPath(position, tuple(fields), path.children)
+            elif mode == "member_at_wrong_position":
+                path = tree.spliced_path(position + 1, record)
+        positions.append(path.position)
+        groups.append(list(path.group))
+        children.append([list(group) for group in path.children])
+        trace.append({"active": active, "record": record, "path": path})
+    witness = {"windowRoot": tree.root + root_offset, "position": positions, "group": groups, "children": children}
+    return encode(witness), trace
+
+
+def predicted_packed_failures(world: World, trace: list, claimed_root: int) -> list[str]:
+    """Which templates of window_sale.circom refuse these slots, from the paths alone."""
+    tree = world.window
+    failures = set()
+    for entry in trace:
+        try:
+            reached = wt.packed_root_from_path(*entry["record"], entry["path"], tree.group_bits, tree.radix_bits)
+        except wt.RecordMismatch:
+            failures.add(GROUP)
+            continue
+        except wt.PathMismatch:
+            failures.add(LEVEL)
+            continue
+        if entry["active"] and reached != claimed_root:
+            failures.add(PACKED_SALE)
+    positions = [entry["path"].position for entry in trace]
+    flags = [1 if entry["active"] else 0 for entry in trace]
+    if not wt.check_ascending(positions, flags):
+        failures.add(ORDER)
+    return sorted(failures)
 
 
 def window_witness(world: World, spec: dict, root_offset: int = 0, overrides: dict | None = None):
@@ -329,8 +401,10 @@ def variants(world: World, membership: str, sales: int, buyers: int) -> list[Var
     assert sales >= 8
     out = world.outputs
     last = sales - 1
-    window = membership == "window"
+    window = membership in ("window", "packed")
     own_sale, own_level, own_order = (SALE, LEVEL, ORDER) if window else (SMT, SMT, None)
+    if membership == "packed":
+        own_sale = PACKED_SALE
 
     other_label = next(o.owner for o in world.sellable if o.owner != world.sellable[0].owner)
     items: list[Variant] = [
@@ -377,6 +451,7 @@ def variants(world: World, membership: str, sales: int, buyers: int) -> list[Var
             Variant("member_leaf_at_wrong_position", "invalid", valid,
                     "The last slot's real leaf spliced into the path of the next position up.", own_sale,
                     overrides={last: "member_at_wrong_position"}),
+            *record_variant(membership, valid, last),
             Variant("duplicate_output_two_slots", "invalid", duplicate,
                     "Slots 3 and 4 both sell the output at position 3, each validly signed.", own_order),
             Variant("slots_out_of_position_order", "invalid", swapped,
@@ -391,8 +466,21 @@ def variants(world: World, membership: str, sales: int, buyers: int) -> list[Var
     return items
 
 
+def record_variant(membership: str, valid: dict, last: int) -> list[Variant]:
+    """Packed layout only: the last slot's real path with the bottom node's record at the position's
+    index swapped with its neighbour, which the bottom node's own selection check refuses."""
+    if membership != "packed":
+        return []
+    return [Variant("record_disagrees_with_group", "invalid", valid,
+                    "The last slot names its real path, but the bottom node's record at its index is the "
+                    "neighbouring record.", GROUP, overrides={last: "record_off_group"})]
+
+
 def witness_for(world: World, membership: str, variant: Variant):
     """(encoded witness, the templates the checks above predict will refuse it)."""
+    if membership == "packed":
+        witness, trace = packed_witness(world, variant.spec, variant.root_offset, variant.overrides)
+        return witness, predicted_packed_failures(world, trace, world.window.root + variant.root_offset)
     if membership == "window":
         witness, trace = window_witness(world, variant.spec, variant.root_offset, variant.overrides)
         return witness, predicted_window_failures(world, trace, world.window.root + variant.root_offset)
@@ -410,7 +498,7 @@ def write_json(path: Path, data) -> None:
 
 
 def build(key_hashes: dict, out: Path, membership: str, sales: int, buyers: int, radix_bits: int = 1) -> World:
-    world = build_world(key_hashes, radix_bits)
+    world = build_world(key_hashes, radix_bits, packed=membership == "packed")
     manifest = []
     for variant in variants(world, membership, sales, buyers):
         witness, predicted = witness_for(world, membership, variant)
@@ -426,11 +514,12 @@ def build(key_hashes: dict, out: Path, membership: str, sales: int, buyers: int,
         "network": mj.NETWORK, "tip": mj.TIP, "window": [lower, upper],
         "membership": membership, "sales": sales, "buyers": buyers,
         "window_tree": {"radix_bits": tree.radix_bits, "levels": tree.levels, "leaves": len(tree),
+                        "group_bits": getattr(tree, "group_bits", 0),
                         "capacity": tree.capacity, "root": str(tree.root)},
         "smt": {"leaves": len(world.smt_tree), "levels": SMT_LEVELS, "root": str(world.smt_tree.root),
                 "max_leaf_depth": max(world.smt_tree.leaf_depths())},
         "sellable": len(world.sellable),
-        "root": str(tree.root if membership == "window" else world.smt_tree.root),
+        "root": str(tree.root if membership in ("window", "packed") else world.smt_tree.root),
         "outputs": {name: {"outpoint": f"{o.txid}:{o.vout}", "owner": o.owner, "root_height": o.root_height,
                            "in_window": o.key in tree} for name, o in world.outputs.items()},
     })
@@ -443,7 +532,7 @@ def main() -> None:
     parser.add_argument("paths", nargs="*")
     parser.add_argument("--sales", type=int, default=16)
     parser.add_argument("--buyers", type=int, default=4)
-    parser.add_argument("--membership", choices=["window", "smt"], default="window")
+    parser.add_argument("--membership", choices=["window", "packed", "smt"], default="window")
     parser.add_argument("--radix-bits", type=int, default=1)
     args = parser.parse_args()
     if args.mode == "labels":

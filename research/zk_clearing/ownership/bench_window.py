@@ -1,12 +1,15 @@
 """Cost of building the dense window tree at production size, beside M5's sparse Merkle tree.
 
-    python3 bench_window.py build [--leaves 119953] [--radix-bits 1] [--sparse] [--seed 1]
+    python3 bench_window.py build [--leaves 119953] [--radix-bits 1] [--sparse] [--packed] [--seed 1]
                                   [--write-input DIR]
 
 `build` makes `--leaves` synthetic outputs (random 253-bit outpoint ids and owners, units and root
 heights as in `gen_inputs.synthetic_outputs`), builds the window tree and prints one JSON line:
 leaves, levels, capacity, root, Poseidon evaluations, seconds and the proof size. With `--sparse`
-it builds M5's tree over the same outputs for comparison. `--write-input DIR` writes the circuit
+it builds M5's tree over the same outputs for comparison; with `--packed` it builds the packed tree
+(four records per bottom node, five eight-way levels) and writes the input of `window_sale_pk_n1.circom`
+(valid.json, and in DIR/invalid the same record with a wrong owner and a position one bottom node off).
+`--write-input DIR` writes the circuit
 input of `window_sale_n1.circom` (radix 2) or `window_sale_r8_n1.circom` (radix 8) for a sold
 output, valid.json, plus two broken ones in DIR/invalid: the same leaf with a wrong owner, and a
 position one off.
@@ -80,6 +83,21 @@ def circuit_input(tree: wt.WindowTree, leaf: wt.WindowLeaf, owner_delta: int = 0
     }
 
 
+def packed_circuit_input(tree: wt.PackedWindowTree, leaf: wt.PackedLeaf, owner_delta: int = 0, position_delta: int = 0) -> dict:
+    position = tree.position_of(leaf.key)
+    claimed_owner = leaf.owner + owner_delta
+    path = tree.path(position) if not owner_delta else tree.spliced_path(position, (leaf.key, claimed_owner))
+    return {
+        "windowRoot": tree.root,
+        "activeSale": [1],
+        "saleId": [leaf.key],
+        "sellerId": [claimed_owner],
+        "position": [position + position_delta * tree.records],
+        "group": [list(path.group)],
+        "children": [[list(group) for group in path.children]],
+    }
+
+
 def encode(value):
     if isinstance(value, int):
         return str(value)
@@ -98,6 +116,7 @@ def main() -> None:
     parser.add_argument("--levels", type=int, default=None)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--sparse", action="store_true")
+    parser.add_argument("--packed", action="store_true")
     parser.add_argument("--write-input", default=None)
     args = parser.parse_args()
 
@@ -111,6 +130,26 @@ def main() -> None:
             "mean_leaf_depth": round(sum(depths) / len(depths), 2), "max_leaf_depth": max(depths),
             "proof_bytes_at_mean_depth": round(32 * sum(depths) / len(depths)),
         }))
+        return
+    if args.packed:
+        smt.reset_hash_counts()
+        start = time.perf_counter()
+        packed = wt.PackedWindowTree([wt.PackedLeaf(leaf.key, leaf.owner) for leaf in leaves])
+        seconds = time.perf_counter() - start
+        probe = packed.path(len(leaves) // 2)
+        print(json.dumps({
+            "tree": "window packed (4 records per bottom node, 5 eight-way levels)", "leaves": len(leaves),
+            "levels": packed.levels, "capacity": packed.capacity, "root": str(packed.root), "seconds": round(seconds, 1),
+            "poseidon_by_inputs": {str(k): v for k, v in sorted(smt.WIDE_HASH_COUNTS.items())},
+            "evaluations": sum(smt.WIDE_HASH_COUNTS.values()), "proof_bytes": probe.size_bytes(packed.radix_bits),
+        }))
+        if args.write_input:
+            out = Path(args.write_input)
+            (out / "invalid").mkdir(parents=True, exist_ok=True)
+            record = packed.leaves[len(leaves) // 2]
+            (out / "valid.json").write_text(json.dumps(encode(packed_circuit_input(packed, record))))
+            (out / "invalid" / "wrong_owner.json").write_text(json.dumps(encode(packed_circuit_input(packed, record, owner_delta=1))))
+            (out / "invalid" / "position_off_by_one_bottom_node.json").write_text(json.dumps(encode(packed_circuit_input(packed, record, position_delta=1))))
         return
     tree, seconds, wide, narrow = build_window(leaves, args.radix_bits, args.levels)
     probe = tree.path(len(leaves) // 2)
