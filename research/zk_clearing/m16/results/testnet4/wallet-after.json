@@ -1,0 +1,11 @@
+{
+  "mine": {
+    "trusted": 0.00628233,
+    "untrusted_pending": 0.00000000,
+    "immature": 0.00000000
+  },
+  "lastprocessedblock": {
+    "hash": "00000000eac3a40ef6b389d280fd2a18984b2d1c01c85955212c5a445f9c8fec",
+    "height": 158625
+  }
+}
