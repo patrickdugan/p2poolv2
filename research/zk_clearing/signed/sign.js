@@ -14,6 +14,9 @@ const crypto = require("crypto");
 
 const ORDER_TAG = 1n;
 const ESCROW_TAG = 2n;
+// signed_terms.circom: DEADLINE_AFTER_BATCH and ESCROW_AFTER_BATCH.
+const DEADLINE_AFTER_BATCH = 4n;
+const ESCROW_AFTER_BATCH = 22n;
 
 // The signing kit: demo keys, EdDSA-Poseidon signatures, Poseidon over BN254 and the builder that
 // turns a spec into signed inputs. main() below uses it, and so does joined/sign_joined.js.
@@ -103,7 +106,7 @@ async function createSigner(modules) {
 
 async function main() {
   const [modules, validSpecPath, resplitSpecPath, outDir] = process.argv.slice(2);
-  const { build, signOrder, inverse, write, clone, buyerOf } = await createSigner(modules);
+  const { build, signOrder, signEscrow, inverse, write, clone, buyerOf } = await createSigner(modules);
 
   fs.mkdirSync(path.join(outDir, "invalid"), { recursive: true });
   const valid = build(JSON.parse(fs.readFileSync(validSpecPath, "utf8")));
@@ -131,13 +134,21 @@ async function main() {
     i.refund[0] = (BigInt(i.refund[0]) - raise).toString();
   });
   mutate("order_r8_off_curve", (i) => { i.orderR8x[0] = (BigInt(i.orderR8x[0]) + 1n).toString(); });
-  // A correctly signed order that expired before the batch height.
+  // Correctly signed terms one block short of what M13's bound graph needs: an order that expires
+  // before the kickoff deadline, an escrow that refunds before the latest payout.
   {
     const rebuilt = build(JSON.parse(fs.readFileSync(validSpecPath, "utf8")));
     const i = rebuilt.inputs;
-    i.orderExpiry[0] = (BigInt(i.batchHeight) - 1n).toString();
+    i.orderExpiry[0] = (BigInt(i.batchHeight) + DEADLINE_AFTER_BATCH - 1n).toString();
     signOrder(i, 0, rebuilt.sellerKeys[0]);
     invalid["expired_order"] = clone(i);
+  }
+  {
+    const rebuilt = build(JSON.parse(fs.readFileSync(validSpecPath, "utf8")));
+    const i = rebuilt.inputs;
+    i.escrowExpiry[0] = (BigInt(i.batchHeight) + ESCROW_AFTER_BATCH - 1n).toString();
+    signEscrow(i, 0, rebuilt.buyerKeys[0]);
+    invalid["expired_escrow"] = clone(i);
   }
 
   for (const [name, i] of Object.entries(invalid)) write(path.join(outDir, "invalid", name + ".json"), i);

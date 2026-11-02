@@ -10,8 +10,8 @@ GROTH16.md, and the keys are public demo keys.
 
 | Term | Signed by | Message (Poseidon6) | Enforced |
 |---|---|---|---|
-| Seller order, per active sale | the seller's BabyJubjub order key | tag 1, `saleId`, `price`, the buyer's `buyerId`, `sellerPayoutId`, `orderExpiry` | EdDSA-Poseidon signature; `sellerId = Poseidon(Ax, Ay)` of the signing key; `batchHeight <= orderExpiry` |
-| Buyer escrow terms, per active buyer | the buyer's order key | tag 2, `escrowId`, `funding`, `feeCap`, `refundScriptId`, `escrowExpiry` | signature; public `buyerId = Poseidon(Ax, Ay)`; `feeBudget <= feeCap`; `batchHeight <= escrowExpiry` |
+| Seller order, per active sale | the seller's BabyJubjub order key | tag 1, `saleId`, `price`, the buyer's `buyerId`, `sellerPayoutId`, `orderExpiry` | EdDSA-Poseidon signature; `sellerId = Poseidon(Ax, Ay)` of the signing key; `batchHeight + 4 <= orderExpiry` |
+| Buyer escrow terms, per active buyer | the buyer's order key | tag 2, `escrowId`, `funding`, `feeCap`, `refundScriptId`, `escrowExpiry` | signature; public `buyerId = Poseidon(Ax, Ay)`; `feeBudget <= feeCap`; `batchHeight + 22 <= escrowExpiry` |
 
 Two more changes:
 
@@ -83,7 +83,8 @@ The eight M4 fixtures, each rejected by the witness calculator at the rule it br
 | `payout_script_swapped` | `sellerPayoutId` replaced by another seller's | EdDSA equality |
 | `seller_id_not_signer` | `sellerId` set to another seller's key hash | `sellerId = Poseidon(A)` |
 | `fee_over_cap` | `feeBudget` = cap + 1, refund lowered to balance | `feeCap - feeBudget` range check |
-| `expired_order` | order validly re-signed with expiry = batch height − 1 | height range check |
+| `expired_order` | order validly re-signed with expiry = batch height + 3, one block before the kickoff deadline | height range check |
+| `expired_escrow` | escrow terms validly re-signed with expiry = batch height + 21, one block short of the latest payout | height range check |
 | `order_r8_off_curve` | `R8.x` + 1 | `BabyCheck` on `R8` |
 
 ## Signature options (the roadmap's three)

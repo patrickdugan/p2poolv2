@@ -16,6 +16,9 @@ const { computeStatement } = require("./statement_signed_tree.js");
 
 const ORDER_TAG = 1n;
 const ESCROW_TAG = 2n;
+// signed_terms.circom: DEADLINE_AFTER_BATCH and ESCROW_AFTER_BATCH.
+const DEADLINE_AFTER_BATCH = 4n;
+const ESCROW_AFTER_BATCH = 22n;
 const R = 21888242871839275222246405745257275088548364400416034343698204186575808495617n;
 
 async function main() {
@@ -145,16 +148,17 @@ async function main() {
     i.refund[b] = (BigInt(i.refund[b]) - raise).toString();
   });
   mutate("order_r8_off_curve", (i) => { i.orderR8x[0] = (BigInt(i.orderR8x[0]) + 1n).toString(); });
-  // Correctly signed terms that expired before the batch height.
+  // Correctly signed terms one block short of what M13's bound graph needs: an order that expires
+  // before the kickoff deadline, an escrow that refunds before the latest payout.
   {
     const i = clone(valid.inputs);
-    i.orderExpiry[0] = (BigInt(i.batchHeight) - 1n).toString();
+    i.orderExpiry[0] = (BigInt(i.batchHeight) + DEADLINE_AFTER_BATCH - 1n).toString();
     signOrder(i, 0, valid.sellerKeys[0]);
     invalid["expired_order"] = finish(clone(i));
   }
   {
     const i = clone(valid.inputs);
-    i.escrowExpiry[0] = (BigInt(i.batchHeight) - 1n).toString();
+    i.escrowExpiry[0] = (BigInt(i.batchHeight) + ESCROW_AFTER_BATCH - 1n).toString();
     signEscrow(i, 0, valid.buyerKeys[0]);
     invalid["expired_escrow"] = finish(clone(i));
   }

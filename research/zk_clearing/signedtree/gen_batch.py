@@ -32,6 +32,9 @@ from witness import BN254_FR, field_id  # noqa: E402
 
 BATCH_HEIGHT = 905_000
 EXPIRY_WINDOW = 144
+# signed_terms.circom: an order has to outlive the kickoff deadline, an escrow the latest payout.
+DEADLINE_AFTER_BATCH = 4
+ESCROW_AFTER_BATCH = 22
 FEE_CAP_MARGIN = 50
 SELLER_KEYS = 37  # distinct seller order keys; sale s signs with key s % SELLER_KEYS
 
@@ -106,7 +109,7 @@ def check(spec_inputs: dict) -> None:
         assert sum(i["selector"][sale]) == i["activeSale"][sale]
         assert i["price"][sale] * i["priceInverse"][sale] % BN254_FR == i["activeSale"][sale]
         if i["activeSale"][sale]:
-            assert i["batchHeight"] <= i["orderExpiry"][sale] < 2**32
+            assert i["batchHeight"] + DEADLINE_AFTER_BATCH <= i["orderExpiry"][sale] < 2**32
             assert i["sellerPayoutId"][sale] != 0
         else:
             assert i["saleId"][sale] == i["sellerId"][sale] == i["sellerPayoutId"][sale] == 0
@@ -118,7 +121,7 @@ def check(spec_inputs: dict) -> None:
         assert i["funding"][buyer] == cost + i["feeBudget"][buyer] + i["refund"][buyer]
         if i["activeBuyer"][buyer]:
             assert i["feeBudget"][buyer] <= i["feeCap"][buyer]
-            assert i["batchHeight"] <= i["escrowExpiry"][buyer] < 2**32
+            assert i["batchHeight"] + ESCROW_AFTER_BATCH <= i["escrowExpiry"][buyer] < 2**32
             assert i["escrowId"][buyer] != 0 and i["refundScriptId"][buyer] != 0
         else:
             assert i["buyerId"][buyer] == i["escrowId"][buyer] == i["feeCap"][buyer] == i["refundScriptId"][buyer] == 0

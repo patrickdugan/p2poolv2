@@ -40,8 +40,8 @@ signal, and with the re-split batch's.
 
 | Term | Signed by | Message (Poseidon6) | Enforced |
 |---|---|---|---|
-| Seller order, per active sale | the seller's BabyJubjub order key | tag 1, `saleId`, `price`, the selected buyer's `buyerId`, `sellerPayoutId`, `orderExpiry` | EdDSA-Poseidon signature; `sellerId = Poseidon(Ax, Ay)`; `batchHeight <= orderExpiry` |
-| Buyer escrow terms, per active buyer | the buyer's order key | tag 2, `escrowId`, `funding`, `feeCap`, `refundScriptId`, `escrowExpiry` | signature; `buyerId = Poseidon(Ax, Ay)`; `feeBudget <= feeCap`; `batchHeight <= escrowExpiry` |
+| Seller order, per active sale | the seller's BabyJubjub order key | tag 1, `saleId`, `price`, the selected buyer's `buyerId`, `sellerPayoutId`, `orderExpiry` | EdDSA-Poseidon signature; `sellerId = Poseidon(Ax, Ay)`; `batchHeight + 4 <= orderExpiry` |
+| Buyer escrow terms, per active buyer | the buyer's order key | tag 2, `escrowId`, `funding`, `feeCap`, `refundScriptId`, `escrowExpiry` | signature; `buyerId = Poseidon(Ax, Ay)`; `feeBudget <= feeCap`; `batchHeight + 22 <= escrowExpiry` |
 
 `BabyCheck` runs on `A` and `R8` in every slot. Padding slots carry a valid signature from a
 padding key over message 0, with the verifier's `enabled` input set to the slot's active flag.
@@ -142,8 +142,8 @@ broken). The same rules fire at all three sizes.
 | `seller_id_not_signer` | `sellerId` set to another seller's key hash | `sellerId = Poseidon(A)` in `SignedOrder` |
 | `fee_over_cap` | `feeBudget` = cap + 1, refund lowered to balance | `Bits51` range check on `feeCap − feeBudget` |
 | `order_r8_off_curve` | `R8.x` + 1 | `BabyCheck` on `R8` |
-| `expired_order` | order validly re-signed with expiry = `batchHeight` − 1 | `AtMostHeight` (`Num2Bits(32)` on the gap) |
-| `expired_escrow` | escrow terms validly re-signed with expiry = `batchHeight` − 1 | `AtMostHeight` |
+| `expired_order` | order validly re-signed with expiry = `batchHeight` + 3, one block before the kickoff deadline | `AtMostHeight` (`Num2Bits(32)` on the gap) |
+| `expired_escrow` | escrow terms validly re-signed with expiry = `batchHeight` + 21, one block short of the latest payout | `AtMostHeight` |
 | `wrong_statement_hash` | claimed `statementHash` + 1, statement unchanged | `statementHash === statement.out` in `SignedClearingTree` |
 
 ## Where the constraints go

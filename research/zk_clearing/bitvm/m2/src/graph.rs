@@ -131,6 +131,15 @@ pub const T_REFUND: u16 = 30;
 pub const ASSERT_BLOCKS: u16 = 3;
 /// Blocks every deadline must leave to spare on regtest: the reorg and inclusion margin r.
 pub const MARGIN: u16 = 2;
+/// Bound graphs (M13): the deadline connector opens to anyone this many blocks after
+/// batchHeight, so the kickoff has to confirm in blocks batchHeight + 1 to batchHeight +
+/// DEADLINE_AFTER_BATCH. The batch proof holds every order expiry to at least batchHeight +
+/// DEADLINE_AFTER_BATCH (signed_terms.circom).
+pub const DEADLINE_AFTER_BATCH: u64 = 4;
+/// Bound graphs: the batch proof holds every escrowExpiry to at least batchHeight +
+/// ESCROW_AFTER_BATCH (signed_terms.circom), and each escrow refunds through CLTV at the
+/// expiry its buyer signed. The smallest that leaves the latest payout MARGIN blocks.
+pub const ESCROW_AFTER_BATCH: u64 = 22;
 
 /// Blocks to spare at each deadline in the worst case, by the constraint's name. Each must
 /// be at least MARGIN.
@@ -148,6 +157,11 @@ pub fn timing_slack() -> Vec<(&'static str, i64)> {
         ("disprove: blocks to get a disprove mined after A", d),
         // The latest payout_asserted is valid from h_e + k + (a - 1) + d; refunds open at h_e + r.
         ("refund: blocks the latest payout has before refunds open", r - (k + a - 1 + d)),
+        // Bound: the latest kickoff is batchHeight + DEADLINE_AFTER_BATCH, its payout_asserted
+        // valid (a - 1) + d blocks later; the earliest refund enters the block after
+        // batchHeight + ESCROW_AFTER_BATCH.
+        ("bound refund: blocks the latest payout has before the earliest signed expiry opens",
+            ESCROW_AFTER_BATCH as i64 + 1 - (DEADLINE_AFTER_BATCH as i64 + a - 1 + d)),
     ]
 }
 

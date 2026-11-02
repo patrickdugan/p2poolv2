@@ -21,7 +21,9 @@ from example_inputs import example_batch, resplit_sales  # noqa: E402
 from witness import BUYER_SLOTS, SALE_SLOTS, build_committed_inputs, field_id  # noqa: E402
 
 FEE_CAP_MARGIN = 50
-BATCH_HEIGHT = 499
+# The example context expires at 500; escrows must expire ESCROW_AFTER_BATCH = 22 blocks
+# after batchHeight (signed_terms.circom), so the batch is at 500 - 22.
+BATCH_HEIGHT = 478
 
 
 def batch_spec(resplit: bool = False, sales=None) -> dict:

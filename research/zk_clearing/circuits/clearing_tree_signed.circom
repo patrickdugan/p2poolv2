@@ -25,11 +25,11 @@ pragma circom 2.1.8;
 //   - an EdDSA-Poseidon signature by the seller's BabyJubjub order key over
 //     Poseidon6(ORDER_TAG, saleId, price, selected buyerId, sellerPayoutId, orderExpiry);
 //   - sellerId = Poseidon(Ax, Ay) of that key;
-//   - batchHeight <= orderExpiry.
+//   - batchHeight + DEADLINE_AFTER_BATCH <= orderExpiry (signed_terms.circom).
 // Per active buyer (M4):
 //   - a signature over Poseidon6(ESCROW_TAG, escrowId, funding, feeCap, refundScriptId,
 //     escrowExpiry) by the buyer's order key; buyerId = Poseidon(Ax, Ay);
-//   - feeBudget <= feeCap and batchHeight <= escrowExpiry.
+//   - feeBudget <= feeCap and batchHeight + ESCROW_AFTER_BATCH <= escrowExpiry.
 // A and R8 are checked to lie on BabyJubjub in every slot. Padding slots carry a valid
 // signature from a padding key over message 0, and the verifier's `enabled` input is the
 // slot's active flag.
@@ -136,7 +136,7 @@ template SignedOrder() {
     sig.M <== message.out;
 
     component notExpired = AtMostHeight();
-    notExpired.x <== active * batchHeight;
+    notExpired.x <== active * (batchHeight + DEADLINE_AFTER_BATCH());
     notExpired.limit <== active * orderExpiry;
 }
 
@@ -198,7 +198,7 @@ template SignedEscrow() {
     feeWithinCap.in <== feeCap - feeBudget;
 
     component notExpired = AtMostHeight();
-    notExpired.x <== active * batchHeight;
+    notExpired.x <== active * (batchHeight + ESCROW_AFTER_BATCH());
     notExpired.limit <== active * escrowExpiry;
 }
 

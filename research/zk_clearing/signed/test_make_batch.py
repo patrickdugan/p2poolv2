@@ -25,11 +25,15 @@ class BatchSpecTests(unittest.TestCase):
             if active == "1":
                 self.assertEqual(int(cap), int(budget) + FEE_CAP_MARGIN)
 
-    def test_expiries_are_not_before_the_batch(self):
+    def test_expiries_cover_the_bound_graph(self):
+        # signed_terms.circom: DEADLINE_AFTER_BATCH = 4, ESCROW_AFTER_BATCH = 22.
         self.assertEqual(self.inputs["batchHeight"], str(BATCH_HEIGHT))
         for expiry, active in zip(self.inputs["orderExpiry"], self.inputs["activeSale"]):
             if active == "1":
-                self.assertGreaterEqual(int(expiry), BATCH_HEIGHT)
+                self.assertGreaterEqual(int(expiry), BATCH_HEIGHT + 4)
+        for expiry, active in zip(self.inputs["escrowExpiry"], self.inputs["activeBuyer"]):
+            if active == "1":
+                self.assertGreaterEqual(int(expiry), BATCH_HEIGHT + 22)
 
     def test_resplit_keeps_public_totals(self):
         resplit = batch_spec(resplit=True)["inputs"]

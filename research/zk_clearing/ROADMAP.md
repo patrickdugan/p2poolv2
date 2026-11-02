@@ -38,7 +38,7 @@ on-chain fees are low.
 | M13 | Rising fees and batchHeight. A market rising from 10 to 20 sat/vB mid-assert: the operator replaced its CPFP child by RBF and A still landed with 3 blocks to spare; above MAX_FEE_RATE it paid 8.48 M sats for an assert the challenge priced at 4.25 M, and kept its bond. batchHeight is bound from both sides on chain: the kickoff's lock time is batchHeight, and the kickoff spends a deadline connector that anyone may sweep 4 blocks later, after which the kickoff can never confirm. Escrows refund through CLTV at an absolute expiry | [bitvm/M13.md](bitvm/M13.md) |
 | M14 | M11's signed-tree proof through BitVM: the payout template recomputes the chunked statement hash in Rust, opens both commitments and checks every signed payout, refund and escrow id. 359 of 364 disprove leaves are byte-identical to M3's (the other 5 embed the verifying key's IC); assert chain 336,520 vB; honest, tampered, mismatch, plus-r and stall behave as in M3 | [bitvm/M14.md](bitvm/M14.md) |
 | M15 | A dense window tree for ownership: a Poseidon tree over the anchor's live outputs in key order, with positions rising across sale slots so one output cannot fill two. 4,417 constraints per sale (binary) or 2,775 (eight-way) against M5's 11,438. Joined to M11's tree: 64×8 at 583,110 constraints, 34 s to prove. 1,024 sales: 8.6–10.3 M constraints instead of 17.5 M, phase-1 power 24, *est.* | [joinedtree/JOINED_TREE.md](joinedtree/JOINED_TREE.md) |
-| M16 | A simulated ceremony carried to a live-chain run. Phase 2 by three contributors in separate accounts, closed by the hash of a testnet4 block named before they contributed; `zkey verify` passes. BitVM's scripts for that key (49 of 432 leaves change size, the largest does not). The driver runs on a live chain: it waits for blocks, presigns at 100 sat/kvB and salts its keys. On a regtest chain mined by a timer, unchallenged, late, stall and challenged all behave as on M13's runs. On testnet4, unchallenged pays the template exactly and late sweeps the deadline connector, refuses the kickoff and refunds; both waited up to 24 blocks for the real-difficulty blocks that take 100 sat/kvB. challenged at 1,000 sat/kvB passes its rehearsal and waits on tSats | [m16/M16.md](m16/M16.md) |
+| M16 | A simulated ceremony carried to a live-chain run. Phase 2 by three contributors in separate accounts, closed by the hash of a testnet4 block named before they contributed; `zkey verify` passes. BitVM's scripts for that key (49 of 432 leaves change size, the largest does not). The driver runs on a live chain: it waits for blocks, presigns at 100 sat/kvB and salts its keys. On a regtest chain mined by a timer, unchallenged, late, stall and challenged all behave as on M13's runs. On testnet4, unchallenged pays the template exactly and late sweeps the deadline connector, refuses the kickoff and refunds; both waited up to 24 blocks for the real-difficulty blocks that take 100 sat/kvB. challenged at 1,000 sat/kvB mines the full assert chain (424,117 vB) and pays the template exactly. It used up every margin: the challenge landed in the last allowed block, and a 4-block reorg re-mined assert_final 2 blocks after the timeout opened | [m16/M16.md](m16/M16.md) |
 
 What M1 taught:
 
@@ -124,13 +124,16 @@ What M13 to M15 taught:
 
 Done since the first version of this list: anchors in M2's graph (M9), the signed tree at scale
 (M11), M5 joined to M4 (M10), the disprove route (M12), rising fees and batchHeight (M13), BitVM
-on M11's statement (M14) and the joined statement at scale (M15).
+on M11's statement (M14), the joined statement at scale (M15), and the expiries in the circuit:
+M4 and M11 prove `batchHeight + 4 <= orderExpiry` and `batchHeight + 22 <= escrowExpiry`, the
+bound graph's deadline and latest payout (M13.md section 2).
 
 Engineering that can be done next without anyone else:
 
-1. **Expiries in the circuit.** Prove `batchHeight + 4 <= orderExpiry` (M13's deadline offset)
-   instead of `batchHeight <= orderExpiry`. Use each buyer's signed `escrowExpiry` as its escrow's
-   CLTV height in the graph.
+1. **Timeouts sized for a public chain.** testnet4's challenged run (M16) used up every margin.
+   It saw 7 empty blocks in a row and a 4-block reorg that moved assert_final past T_assert. The
+   T values were sized on regtest; size them from a chain's record of empty blocks and reorg
+   depth.
 2. **One statement for everything.** M15's joined circuit through M14's BitVM pipeline on M13's
    bound, anchored graph, so one regtest run covers signatures, ownership, fees and heights.
 3. **Under power 23.** M15's eight-way tree misses 2^23 by 2.7% at 1,024 sales. A sale leaf or
@@ -140,8 +143,6 @@ Waiting on Patrick or third parties (details in M8):
 
 - a public phase-1 file (Perpetual Powers of Tau) instead of the insecure local one, at power 23
   or more for a day's signed batch. M16's `ceremony_sim.sh` takes it as an argument;
-- about 350,000 more tSats in the M16 testnet4 wallet (`run-m16.sh <work> address` prints the
-  address) for challenged on testnet4 at 1,000 sat/kvB, which funds about 900,000;
 - independent ceremony contributors and n-of-n committee signers. A MuSig2 aggregate key is
   one BIP340 key on chain, so M2's traces already cover the chain side; what is missing is
   independent people;

@@ -69,9 +69,10 @@ const TRUC_CHILD_MAX_VSIZE: usize = 1000;
 /// Bound runs (M13): the statement's batchHeight, in blocks after the escrows' funding block.
 /// The kickoff's lock time keeps it out of blocks up to this height.
 const BATCH_HEIGHT_AFTER_FUNDING: u64 = 2;
-/// Bound runs: the deadline connector opens to anyone this many blocks after batchHeight, so
-/// the kickoff has to confirm in blocks batchHeight + 1 to batchHeight + DEADLINE_AFTER_BATCH.
-const DEADLINE_AFTER_BATCH: u64 = 4;
+/// Bound runs: the escrowExpiry each buyer signs, in blocks after batchHeight. The batch proof
+/// holds it to at least ESCROW_AFTER_BATCH (graph.rs); this leaves 5 blocks more than that, so
+/// the refunds open in the block M2's CSV refunds did (h_e + T_REFUND).
+const SIGNED_ESCROW_AFTER_BATCH: u64 = T_REFUND as u64 - 1 - BATCH_HEIGHT_AFTER_FUNDING;
 /// The deadline connector's value, what its sweeper keeps (ZKC_DEADLINE_SATS).
 fn deadline_sats() -> u64 {
     std::env::var("ZKC_DEADLINE_SATS").map(|v| v.parse().expect("ZKC_DEADLINE_SATS")).unwrap_or(10_000)
@@ -698,12 +699,13 @@ fn scenario(inp: &Inputs, run: &Run, name: &str) {
 
     // Funding, in one block: an escrow per active buyer, the operator's bond and assert
     // reserve, a coin a challenger will spend, and in a spike the operator's bump coins.
-    // Bound (M13): the funding block is the next one. Each escrow refunds through CLTV at an
-    // absolute expiry that opens in the same block as M2's CSV refund (h_e + T_REFUND), and the
-    // statement's batchHeight is h_e + BATCH_HEIGHT_AFTER_FUNDING.
+    // Bound (M13): the funding block is the next one and the statement's batchHeight is
+    // h_e + BATCH_HEIGHT_AFTER_FUNDING. Each escrow refunds through CLTV at the escrowExpiry its
+    // buyer signed, which the batch proof holds to at least batchHeight + ESCROW_AFTER_BATCH.
     let h_e_expected = rpc.height() + 1;
-    let escrow_expiry = run.bound.then(|| (h_e_expected + u64::from(T_REFUND) - 1) as u32);
     let batch_height = run.bound.then(|| (h_e_expected + BATCH_HEIGHT_AFTER_FUNDING) as u32);
+    let escrow_expiry = batch_height.map(|h| h + SIGNED_ESCROW_AFTER_BATCH as u32);
+    assert!(SIGNED_ESCROW_AFTER_BATCH >= ESCROW_AFTER_BATCH, "the signed escrow expiry is below what the batch proof accepts");
     let mut escrows: Vec<Escrow> = tpl.escrows.iter().map(|s| Escrow::new(&keys, &s.buyer, escrow_expiry)).collect();
     let challenger = keypair(&keys.secp, "challenger");
     let challenger_script = payee_script(&keys, "challenger");

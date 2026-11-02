@@ -9,8 +9,10 @@ pragma circom 2.1.8;
 //   M = Poseidon6(ESCROW_TAG, escrowId, funding, feeCap, refundScriptId, escrowExpiry)
 //
 // sellerId and buyerId are Poseidon(Ax, Ay) of the signing key, so a
-// signature only counts for the identity it names. feeBudget <= feeCap and
-// batchHeight <= every expiry. Signatures stay private: a verifier learns
+// signature only counts for the identity it names. feeBudget <= feeCap,
+// batchHeight + DEADLINE_AFTER_BATCH <= every order expiry and
+// batchHeight + ESCROW_AFTER_BATCH <= every escrow expiry (signed_terms.circom,
+// M13's bound graph). Signatures stay private: a verifier learns
 // that every committed sale and escrow was signed, not the orders.
 //
 // Outputs: saleCommitment (leaves now include sellerPayoutId, so the payout
@@ -142,7 +144,7 @@ template SignedClearing(saleSlots, buyerSlots) {
         feeWithinCap[buyer].in <== feeCap[buyer] - feeBudget[buyer];
 
         escrowNotExpired[buyer] = AtMostHeight();
-        escrowNotExpired[buyer].x <== activeBuyer[buyer] * batchHeight;
+        escrowNotExpired[buyer].x <== activeBuyer[buyer] * (batchHeight + ESCROW_AFTER_BATCH());
         escrowNotExpired[buyer].limit <== activeBuyer[buyer] * escrowExpiry[buyer];
 
         escrowLeaf[buyer] = Poseidon(5);
@@ -211,7 +213,7 @@ template SignedClearing(saleSlots, buyerSlots) {
         orderSig[sale].M <== orderMessage[sale].out;
 
         orderNotExpired[sale] = AtMostHeight();
-        orderNotExpired[sale].x <== activeSale[sale] * batchHeight;
+        orderNotExpired[sale].x <== activeSale[sale] * (batchHeight + DEADLINE_AFTER_BATCH());
         orderNotExpired[sale].limit <== activeSale[sale] * orderExpiry[sale];
 
         saleLeaf[sale] = Poseidon(6);
