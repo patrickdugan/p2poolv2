@@ -1,0 +1,23 @@
+# run-m16.sh testnet4 late, 2026-11-01T19:24Z to 2026-11-02T05:22Z (exit 101). The driver's
+# progress lines, without BitVM's per-chunk build output.
+== testnet4: scenario late (height 158518)
+    5 blocks  challenge: blocks to get a challenge mined after the kickoff
+    6 blocks  unchallenged payout: blocks before the timeout opens
+    3 blocks  assert: blocks to spare after a last-block challenge
+    6 blocks  disprove: blocks to get a disprove mined after A
+    7 blocks  refund: blocks the latest payout has before refunds open
+  wallet now watches 15 keys of this run
+  kickoff(before batchHeight)  not probed: the chain moved past the height first
+  sweep(before deadline)       rejected: mempool non-final; block not tried on a live chain
+  sweep                              105 vB  "accepted"
+  kickoff(after deadline)      rejected: mempool missing-inputs; block not tried on a live chain
+  refund(early)                not probed: the chain moved past the height first
+  refund[buyer1]                     130 vB  "accepted"
+  refund[buyer2]                     130 vB  "accepted"
+  refund[buyer3]                     130 vB  "accepted"
+
+thread 'main' (26665) panicked at m2/src/main.rs:204:9:
+transactions unconfirmed after 6 h
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+Command exited with non-zero status 101
+scenario testnet4 late: 35891.83 s, 3447892 KiB max RSS
