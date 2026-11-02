@@ -46,8 +46,8 @@ signal, and with the re-split batch's.
 `BabyCheck` runs on `A` and `R8` in every slot. Padding slots carry a valid signature from a
 padding key over message 0, with the verifier's `enabled` input set to the slot's active flag.
 `saleCommitment` is the root of M6's binary Poseidon2 tree over Poseidon6 sale leaves (M4's leaf,
-which includes `sellerPayoutId`). `escrowCommitment` is `PoseidonChunked` over M4's Poseidon5
-escrow leaves, which for up to 12 buyer slots is a single Poseidon, as in M4.
+which includes `sellerPayoutId`). `escrowCommitment` is `PoseidonChunked` over Poseidon6
+escrow leaves (M4's five fields plus `escrowExpiry`, M17), which for up to 12 buyer slots is a single Poseidon.
 
 **`statementHash` is a public input, not an output.** The circuit constrains it to equal the hash of
 the statement, so a wrong claimed hash fails in the witness calculator and the invalid-hash fixture
@@ -122,6 +122,13 @@ Every size passes every check in `run.sh`:
 
 128×8 uses 73% of the 2^20 = 1,048,576 constraint ceiling, so it ran and 32×8 was not needed. Its
 setup peaked at 5.98 GiB and its proof at 6.77 GiB.
+
+**M17 changed the escrow leaf.** The table above was measured with M4's Poseidon5 escrow leaf.
+Since [M17](../bitvm/M17.md) the leaf is Poseidon6 and includes `escrowExpiry`, so the committee can
+read each escrow's expiry from `escrowCommitment`. That adds 33 constraints per buyer slot: 16×4
+re-measured at 113,053 (+132) with verifying key sha256 `d8937b82…1dc9c6c4`
+([`bitvm/results/m17/`](../bitvm/results/m17/)). The 64×8 and 128×8 columns were not rerun; they
+grow by 264 constraints each, *est.*
 
 **Read the prove times as a range.** The `run.sh` figure is one run. The three repeats ran later,
 under a load average of 9 to 13 from two other sessions' jobs. At 128×8 they are 1.4 to 2.6 times

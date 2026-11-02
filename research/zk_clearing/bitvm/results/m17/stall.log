@@ -1,0 +1,14 @@
+    5 blocks  challenge: blocks to get a challenge mined after the kickoff
+    6 blocks  unchallenged payout: blocks before the timeout opens
+    3 blocks  assert: blocks to spare after a last-block challenge
+    6 blocks  disprove: blocks to get a disprove mined after A
+    7 blocks  refund: blocks the latest payout has before refunds open
+    2 blocks  bound refund: blocks the latest payout has before the earliest signed expiry opens
+get_signature_from_assertion
+  refund(early)                rejected: mempool non-final; block TestBlockValidity failed: bad-txns-nonfinal, non-final transaction
+  refund[scale-buyer:0]              130 vB  "accepted"
+  refund[scale-buyer:1]              130 vB  "accepted"
+  refund[scale-buyer:2]              130 vB  "accepted"
+  refund[scale-buyer:3]              130 vB  "accepted"
+wrote /root/zkc-m17/m13/anchored-2-bound/scenario-stall.json
+scenario stall: 5.29 s, 12140 KiB max RSS

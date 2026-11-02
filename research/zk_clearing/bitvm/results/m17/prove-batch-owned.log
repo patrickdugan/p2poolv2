@@ -1,0 +1,6 @@
+verifying key sha256 25ba85a4a8e8f7636323bc5bea4a355c15a4b029eb0584c114cbaf8f771edfeb (matches bitvm/M17.md)
+wrote /root/zkc-m17/batch/variants and /root/zkc-m17/batch/opening.json (batchHeight 230, window root 6002641005699930589432488308731212238575517087728275113174642532176594588727)
+wrote 1 joined inputs to /root/zkc-m17/batch/signed
+[INFO]  snarkJS: WITNESS CHECKING FINISHED SUCCESSFULLY
+batch proof: verified by snarkjs
+batch statementHash matches circomlibjs: 4818194768095895498542635345662308470599846190858361856061285020068239953694; windowRoot 6002641005699930589432488308731212238575517087728275113174642532176594588727 is the opening's

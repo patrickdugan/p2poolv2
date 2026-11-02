@@ -1,0 +1,5 @@
+[time] partial disprove scripts: 78.9 s
+[time] full tapscripts: 2.2 s
+[time] assertions honest: 104.3 s
+[time] assertions tampered: 115.1 s
+prepare: 300.97 s, 5951896 KiB max RSS

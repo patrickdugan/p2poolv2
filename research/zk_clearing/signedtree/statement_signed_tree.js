@@ -3,7 +3,7 @@
 //
 //   saleLeaf[s]    = Poseidon6(activeSale, saleId, sellerId, price, selected buyerId, sellerPayoutId)
 //   saleCommitment = root of the binary Poseidon2 tree over saleLeaf[0 .. saleSlots - 1]
-//   escrowLeaf[b]  = Poseidon5(activeBuyer, escrowId, funding, feeCap, refundScriptId)
+//   escrowLeaf[b]  = Poseidon6(activeBuyer, escrowId, funding, feeCap, refundScriptId, escrowExpiry)
 //   escrowCommitment = PoseidonChunked(escrowLeaf[0 .. buyerSlots - 1])
 //   statement      = [saleCommitment, escrowCommitment, batchHeight, totalPayout,
 //                     funding[], feeBudget[], refund[], buyerId[]]    (4 + 4B values)
@@ -61,7 +61,7 @@ function escrowCommitment(poseidon, i) {
   const leaves = i.funding.map((funding, buyer) =>
     poseidon([
       F.e(i.activeBuyer[buyer]), F.e(i.escrowId[buyer]), F.e(funding),
-      F.e(i.feeCap[buyer]), F.e(i.refundScriptId[buyer]),
+      F.e(i.feeCap[buyer]), F.e(i.refundScriptId[buyer]), F.e(i.escrowExpiry[buyer]),
     ]));
   return hashChunked(poseidon, leaves);
 }

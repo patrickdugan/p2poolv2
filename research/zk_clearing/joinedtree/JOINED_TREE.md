@@ -604,6 +604,12 @@ circomlibjs's `statementHash` over the 21 or 37 values (last: the tree's root); 
 batch proves a different hash; a changed public signal, a signal written as `x + r` and a forged
 `.wtns` are rejected (the forged witness fails at constraint 149,033 and 297,986); the padded
 batch satisfies the R1CS. The raw outputs are `results/run-pk_16x4.txt` and `run-pk_32x8.txt`.
+
+**M17 changed the escrow leaf** (Poseidon6 with `escrowExpiry`, [M17.md](../bitvm/M17.md)), which
+is inside M11's circuit: `owned_tree_pk_16x4` re-measured at 152,937 constraints (+132, 33 per buyer
+slot), verifying key sha256 `25ba85a4…771edfeb`. The other rows of the tables above were not rerun;
+each grows by 33 per buyer slot, *est.*
+
 The 32×8 prove peaked at 4.19 GiB, over the 4 GiB per job that was budgeted. A 64×8 run was not made: its prove
 would peak near 6 GiB (the eight-way 64×8 took 5.88 GiB), so 64×8 is compile-only, above.
 

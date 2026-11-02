@@ -7,7 +7,8 @@
 //!
 //! M14: the same build settles M11's signed-tree proof. The statement layout is chosen by the
 //! circuit name in <work>/batch/circuit.txt (written by prove-batch.sh): `signed_tree_16x4`
-//! selects the 20-value signed-tree statement, hashed by PoseidonChunked, whose template
+//! selects the 20-value signed-tree statement, hashed by PoseidonChunked (M17's
+//! `owned_tree_pk_16x4` the same with the ownership tree's root as a 21st value), whose template
 //! (template::build_signed) also opens saleCommitment and escrowCommitment from
 //! <work>/batch/input.json and checks the payee labels in opening.json against the signed ids.
 //! Without circuit.txt (the M1 and M3 batches) the statement is the 18 accounting values.
@@ -110,7 +111,7 @@ fn load(work: &Path) -> Inputs {
         commitment: std::fs::read_to_string(batch.join("sale_commitment.txt")).unwrap().trim().parse().unwrap(),
     };
     assert_eq!(public_of(kind, &inp.statement), inp.signals, "the statement does not match the proof's public signals");
-    if let template::Kind::SignedTree { buyers, .. } = kind {
+    if let Some(buyers) = kind.buyer_slots() {
         // Two implementations of the commitments agree: circomlibjs (prove-batch.sh) and the Rust
         // template (light-poseidon), which recomputes both from the circuit input.
         let escrow: BigUint = std::fs::read_to_string(batch.join("escrow_commitment.txt")).unwrap().trim().parse().unwrap();

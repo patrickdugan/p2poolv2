@@ -62,6 +62,9 @@ pub struct EscrowSpec {
     pub slot: usize,
     pub buyer: String,
     pub amount: u64,
+    /// The escrowExpiry the buyer signed, as `escrowCommitment` opens it (M17's signed kinds
+    /// only): the absolute height the escrow's CLTV refund must use.
+    pub expiry: Option<u64>,
 }
 
 /// A payout output by payee label, in template order.
@@ -76,6 +79,9 @@ pub struct PayoutSpec {
 pub struct Template {
     pub escrows: Vec<EscrowSpec>,
     pub outputs: Vec<PayoutSpec>,
+    /// The statement's batchHeight (the signed kinds; `None` for M1's and M3's statement, which
+    /// has none).
+    pub batch_height: Option<u64>,
 }
 
 fn decimal(value: &Value) -> Result<BigUint, String> {
@@ -179,7 +185,7 @@ fn assemble(input: &Value, opening: &Value, amounts: &Amounts) -> Result<Templat
         }
         let buyer = opening["buyer_slots"][b]["buyer"].as_str().ok_or(format!("buyer slot {b} has no buyer"))?;
         let refund_payee = opening["buyer_slots"][b]["refund_payee"].as_str().ok_or(format!("buyer slot {b} has no refund payee"))?;
-        escrows.push(EscrowSpec { slot: b, buyer: buyer.to_string(), amount: fund });
+        escrows.push(EscrowSpec { slot: b, buyer: buyer.to_string(), amount: fund, expiry: None });
         funding_sum += fund;
         fee_sum += amounts.fee_budget[b];
         let back = amounts.refund[b];
@@ -198,7 +204,7 @@ fn assemble(input: &Value, opening: &Value, amounts: &Amounts) -> Result<Templat
     if let Some(dust) = outputs.iter().find(|o| o.amount < P2TR_DUST) {
         return Err(format!("{} output to {} is dust ({} sats)", dust.role, dust.payee, dust.amount));
     }
-    Ok(Template { escrows, outputs })
+    Ok(Template { escrows, outputs, batch_height: None })
 }
 
 fn poseidon(inputs: &[Fr]) -> Result<Fr, String> {
@@ -254,6 +260,8 @@ pub const DOMAIN: &str = "p2poolv2/proposed-share-clearing/v0";
 pub const CHUNK_WIDTH: usize = 12;
 /// PoseidonChunked takes at most CHUNK_WIDTH chunks of CHUNK_WIDTH values: 4 + 4B <= 144.
 pub const MAX_CHUNKED_VALUES: usize = CHUNK_WIDTH * CHUNK_WIDTH;
+/// The joined statement (M17) appends one value, the ownership tree's windowRoot, to M11's 4 + 4B.
+pub const JOINED_EXTRA: usize = 1;
 
 pub const SIGNED_SALE_COMMITMENT: usize = 0;
 pub const SIGNED_ESCROW_COMMITMENT: usize = 1;
@@ -263,6 +271,8 @@ pub const fn signed_funding(b: usize) -> usize { 4 + b }
 pub const fn signed_fee_budget(buyers: usize, b: usize) -> usize { 4 + buyers + b }
 pub const fn signed_refund(buyers: usize, b: usize) -> usize { 4 + 2 * buyers + b }
 pub const fn signed_buyer_id(buyers: usize, b: usize) -> usize { 4 + 3 * buyers + b }
+/// The joined statement's last value, after buyerId[B - 1] (M17).
+pub const fn signed_window_root(buyers: usize) -> usize { 4 + 4 * buyers }
 
 pub fn signed_value_name(buyers: usize, index: usize) -> String {
     match index {
@@ -274,64 +284,95 @@ pub fn signed_value_name(buyers: usize, index: usize) -> String {
         _ if index < 4 + 2 * buyers => format!("feeBudget[{}]", index - 4 - buyers),
         _ if index < 4 + 3 * buyers => format!("refund[{}]", index - 4 - 2 * buyers),
         _ if index < 4 + 4 * buyers => format!("buyerId[{}]", index - 4 - 3 * buyers),
+        _ if index == 4 + 4 * buyers => "windowRoot".into(),
         _ => format!("statement[{index}]"),
     }
 }
 
 /// The statement layout a proof is about. `Accounting` is M1's 18 public signals, hashed by M3;
-/// `SignedTree` is M11's circuit at `sales` x `buyers` slots, hashed by PoseidonChunked.
+/// `SignedTree` is M11's circuit at `sales` x `buyers` slots, hashed by PoseidonChunked;
+/// `OwnedTreePacked` is M15's joined circuit (`owned_tree_pk_<sales>x<buyers>`), M11's statement
+/// with the ownership tree's windowRoot appended as value 4 + 4B (M17).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
     Accounting,
     SignedTree { sales: usize, buyers: usize },
+    OwnedTreePacked { sales: usize, buyers: usize },
 }
 
 impl Kind {
-    /// The kind a circuit name selects: `accounting16x4_committed`, `accounting16x4_hashed` or
-    /// `signed_tree_<sales>x<buyers>` (the name prove-batch.sh writes to <batch>/circuit.txt).
+    /// The kind a circuit name selects: `accounting16x4_committed`, `accounting16x4_hashed`,
+    /// `signed_tree_<sales>x<buyers>` or `owned_tree_pk_<sales>x<buyers>` (the name
+    /// prove-batch.sh writes to <batch>/circuit.txt).
     pub fn from_circuit(name: &str) -> Result<Kind, String> {
         if name == "accounting16x4_committed" || name == "accounting16x4_hashed" {
             return Ok(Kind::Accounting);
         }
-        let shape = name.strip_prefix("signed_tree_").ok_or(format!("unknown circuit {name:?}"))?;
+        let (shape, joined) = match (name.strip_prefix("signed_tree_"), name.strip_prefix("owned_tree_pk_")) {
+            (Some(shape), _) => (shape, false),
+            (_, Some(shape)) => (shape, true),
+            _ => return Err(format!("unknown circuit {name:?}")),
+        };
         let (sales, buyers) = shape.split_once('x').ok_or(format!("circuit {name:?} has no <sales>x<buyers> shape"))?;
         let parse = |s: &str| s.parse::<usize>().map_err(|_| format!("circuit {name:?} has no <sales>x<buyers> shape"));
         let (sales, buyers) = (parse(sales)?, parse(buyers)?);
-        if sales < 2 || !sales.is_power_of_two() || buyers == 0 || 4 + 4 * buyers > MAX_CHUNKED_VALUES {
+        if sales < 2 || !sales.is_power_of_two() || buyers == 0 || 4 + 4 * buyers + usize::from(joined) > MAX_CHUNKED_VALUES {
             return Err(format!("circuit {name:?}: {sales} sale slots and {buyers} buyer slots are not a signed-tree shape"));
         }
-        Ok(Kind::SignedTree { sales, buyers })
+        Ok(if joined { Kind::OwnedTreePacked { sales, buyers } } else { Kind::SignedTree { sales, buyers } })
+    }
+
+    /// (sale slots, buyer slots, appended values) of a signed kind.
+    fn signed_shape(self) -> Option<(usize, usize, usize)> {
+        match self {
+            Kind::Accounting => None,
+            Kind::SignedTree { sales, buyers } => Some((sales, buyers, 0)),
+            Kind::OwnedTreePacked { sales, buyers } => Some((sales, buyers, JOINED_EXTRA)),
+        }
+    }
+
+    /// Buyer slots B of a signed kind.
+    pub fn buyer_slots(self) -> Option<usize> {
+        self.signed_shape().map(|(_, buyers, _)| buyers)
+    }
+
+    /// Whether the statement's batchHeight is a height the regtest chain is driven to, so the
+    /// bound graph (M13) takes the kickoff's lock time and the escrows' CLTV expiries from the
+    /// template (M17). M14's batch has a mainnet-sized height (905,000) and uses M13's relative
+    /// heights.
+    pub fn height_from_template(self) -> bool {
+        matches!(self, Kind::OwnedTreePacked { .. })
     }
 
     /// Number of values in the statement the public hash commits to.
     pub fn statement_len(self) -> usize {
-        match self {
-            Kind::Accounting => NUM_SIGNALS,
-            Kind::SignedTree { buyers, .. } => 4 + 4 * buyers,
+        match self.signed_shape() {
+            None => NUM_SIGNALS,
+            Some((_, buyers, extra)) => 4 + 4 * buyers + extra,
         }
     }
 
     pub fn value_name(self, index: usize) -> String {
-        match self {
-            Kind::Accounting => signal_name(index),
-            Kind::SignedTree { buyers, .. } => signed_value_name(buyers, index),
+        match self.signed_shape() {
+            None => signal_name(index),
+            Some((_, buyers, _)) => signed_value_name(buyers, index),
         }
     }
 
     /// Index of `refund[b]` in the statement.
     pub fn refund_index(self, b: usize) -> usize {
-        match self {
-            Kind::Accounting => refund(b),
-            Kind::SignedTree { buyers, .. } => signed_refund(buyers, b),
+        match self.signed_shape() {
+            None => refund(b),
+            Some((_, buyers, _)) => signed_refund(buyers, b),
         }
     }
 
     /// The tampered scenario moves this many sats of refund from buyer slot 1 to buyer slot 0:
-    /// 50,000 in M1 and M3, 10,000 in M14 (buyer slot 1 holds 31,000 there).
+    /// 50,000 in M1 and M3, 10,000 in the signed kinds (buyer slot 1 holds 31,000 there).
     pub fn moved_sats(self) -> u64 {
         match self {
             Kind::Accounting => 50_000,
-            Kind::SignedTree { .. } => 10_000,
+            Kind::SignedTree { .. } | Kind::OwnedTreePacked { .. } => 10_000,
         }
     }
 
@@ -345,19 +386,22 @@ impl Kind {
     pub fn statement_hash(self, statement: &[BigUint]) -> Result<BigUint, String> {
         match self {
             Kind::Accounting => statement_hash(statement),
-            Kind::SignedTree { .. } => signed_statement_hash(statement),
+            Kind::SignedTree { .. } | Kind::OwnedTreePacked { .. } => signed_statement_hash(statement),
         }
     }
 
     /// The template for `statement`, which must hash to `statement_hash`. `sale_commitment` is
-    /// an independently computed commitment to the sale list; M14 recomputes both commitments
-    /// itself and ignores it.
+    /// an independently computed commitment to the sale list; the signed kinds recompute both
+    /// commitments themselves and ignore it.
     pub fn build_hashed(self, statement_hash: &BigUint, statement: &[BigUint], input: &Value, opening: &Value, sale_commitment: &BigUint) -> Result<Template, String> {
-        match self {
-            Kind::Accounting => build_hashed(statement_hash, statement, input, opening, sale_commitment),
-            Kind::SignedTree { sales, buyers } => {
+        match self.signed_shape() {
+            None => build_hashed(statement_hash, statement, input, opening, sale_commitment),
+            Some((sales, buyers, extra)) => {
                 if array_len(input, "price")? != sales || array_len(input, "buyerId")? != buyers {
                     return Err(format!("the input is not a {sales}x{buyers} batch"));
+                }
+                if statement.len() != 4 + 4 * buyers + extra {
+                    return Err(format!("{self:?} has {} statement values, got {}", 4 + 4 * buyers + extra, statement.len()));
                 }
                 build_signed(statement_hash, statement, input, opening)
             }
@@ -414,12 +458,19 @@ pub fn poseidon_chunked(values: &[BigUint]) -> Result<BigUint, String> {
     Ok(big(poseidon_chunked_fr(&fr)?))
 }
 
-/// The number of buyer slots B of a signed-tree statement of `len` values (4 + 4B).
-fn signed_buyers(len: usize) -> Result<usize, String> {
-    if len < 8 || len % 4 != 0 || len > MAX_CHUNKED_VALUES {
-        return Err(format!("a signed-tree statement has 4 + 4B values (at most {MAX_CHUNKED_VALUES}), got {len}"));
+/// The shape of a signed-tree statement of `len` values: (buyer slots B, appended values E) with
+/// len = 4 + 4B + E, E = 0 for M11's statement and E = JOINED_EXTRA for the joined one (M17).
+fn statement_shape(len: usize) -> Result<(usize, usize), String> {
+    let extra = len % 4;
+    if len < 8 || extra > JOINED_EXTRA || len > MAX_CHUNKED_VALUES {
+        return Err(format!("a signed-tree statement has 4 + 4B (+ {JOINED_EXTRA}) values (at most {MAX_CHUNKED_VALUES}), got {len}"));
     }
-    Ok((len - 4) / 4)
+    Ok(((len - 4 - extra) / 4, extra))
+}
+
+/// The number of buyer slots B of a signed-tree statement of `len` values.
+fn signed_buyers(len: usize) -> Result<usize, String> {
+    Ok(statement_shape(len)?.0)
 }
 
 /// statementHash = PoseidonChunked(statement) for M11's statement. Values >= r are refused, so
@@ -460,8 +511,10 @@ pub fn sale_commitment(input: &Value) -> Result<BigUint, String> {
     Ok(big(level[0]))
 }
 
-/// PoseidonChunked over each buyer slot's Poseidon5(activeBuyer, escrowId, funding, feeCap,
-/// refundScriptId). `funding` is the statement's, so the commitment binds the escrowed amounts.
+/// PoseidonChunked over each buyer slot's Poseidon6(activeBuyer, escrowId, funding, feeCap,
+/// refundScriptId, escrowExpiry). `funding` is the statement's, so the commitment binds the
+/// escrowed amounts, and the leaf holds the escrow expiry each buyer signed (M17), so the
+/// committee reads the expiry from a value the proof commits to.
 pub fn escrow_commitment(input: &Value, funding: &[BigUint]) -> Result<BigUint, String> {
     let mut leaves = Vec::with_capacity(funding.len());
     for (b, fund) in funding.iter().enumerate() {
@@ -471,23 +524,28 @@ pub fn escrow_commitment(input: &Value, funding: &[BigUint]) -> Result<BigUint, 
             to_fr(fund, &format!("funding[{b}]"))?,
             field(&input["feeCap"][b], "feeCap")?,
             field(&input["refundScriptId"][b], "refundScriptId")?,
+            field(&input["escrowExpiry"][b], "escrowExpiry")?,
         ])?);
     }
     Ok(big(poseidon_chunked_fr(&leaves)?))
 }
 
-/// The M14 template. `statement_hash` is the proof's single public signal and `statement` the
-/// 4 + 4B values the operator publishes with the sale list and escrow terms (`input`, the
-/// circuit input, whose signature fields the template does not read) and the payee labels
-/// (`opening`). Checks, in order:
+/// The M14 template (M17 for the joined statement). `statement_hash` is the proof's single
+/// public signal and `statement` the 4 + 4B (+ 1) values the operator publishes with the sale
+/// list and escrow terms (`input`, the circuit input, whose signature fields the template does
+/// not read) and the payee labels (`opening`). Checks, in order:
 ///   1. the statement hashes to `statement_hash` (PoseidonChunked), every value below r;
-///   2. saleCommitment and escrowCommitment open to `input`, and buyerId[b] is the sale list's;
+///   2. saleCommitment and escrowCommitment open to `input` (the escrow leaves include each
+///      escrowExpiry), and buyerId[b] is the sale list's; for the joined statement the last
+///      value, windowRoot, equals the root in `opening["window_root"]` (the root watchers
+///      publish) and in `input["windowRoot"]`;
 ///   3. every active sale slot's sellerPayoutId is the id of its payee label, and every active
 ///      buyer's escrowId and refundScriptId are the ids of its escrow and refund labels: the
 ///      scripts the graph pays are the ones the signed terms name;
 ///   4. M1's checks: prices sum to totalPayout, outputs conserve the escrowed value, no dust.
-/// Signatures, expiries, `feeBudget <= feeCap` and each buyer's equation
-/// funding = cost + fee + refund are the proof's job.
+/// The result carries the statement's batchHeight and every active escrow's committed expiry.
+/// Signatures, the expiries' margins over batchHeight, `feeBudget <= feeCap`, the ownership of
+/// the sold outputs and each buyer's equation funding = cost + fee + refund are the proof's job.
 pub fn build_signed(statement_hash: &BigUint, statement: &[BigUint], input: &Value, opening: &Value) -> Result<Template, String> {
     if statement_hash >= &zkc_convert::fr_modulus() {
         return Err("statementHash is not below r".into());
@@ -495,7 +553,7 @@ pub fn build_signed(statement_hash: &BigUint, statement: &[BigUint], input: &Val
     if &signed_statement_hash(statement)? != statement_hash {
         return Err("the statement does not hash to statementHash".into());
     }
-    let buyers = signed_buyers(statement.len())?;
+    let (buyers, extra) = statement_shape(statement.len())?;
     let sats = |i: usize| -> Result<u64, String> {
         let name = signed_value_name(buyers, i);
         let v = small(&statement[i], &name)?;
@@ -523,6 +581,17 @@ pub fn build_signed(statement_hash: &BigUint, statement: &[BigUint], input: &Val
     for b in 0..buyers {
         if statement[signed_buyer_id(buyers, b)] != decimal(&input["buyerId"][b])? {
             return Err(format!("buyerId[{b}] differs from the sale list the commitment opens to"));
+        }
+    }
+    if extra == JOINED_EXTRA {
+        let root = &statement[signed_window_root(buyers)];
+        let published = opening["window_root"].as_str().ok_or("the opening has no window_root")?;
+        let published: BigUint = published.parse().map_err(|_| "window_root is not a decimal integer".to_string())?;
+        if root != &published {
+            return Err("windowRoot differs from the root in the opening".into());
+        }
+        if root != &decimal(&input["windowRoot"])? {
+            return Err("windowRoot differs from the root in the circuit input".into());
         }
     }
 
@@ -553,7 +622,12 @@ pub fn build_signed(statement_hash: &BigUint, statement: &[BigUint], input: &Val
             return Err(format!("buyer slot {b}: refundScriptId is not the script id of payee {refund_payee}"));
         }
     }
-    assemble(input, opening, &amounts)
+    let mut template = assemble(input, opening, &amounts)?;
+    template.batch_height = Some(small(&statement[SIGNED_BATCH_HEIGHT], "batchHeight")?);
+    for escrow in &mut template.escrows {
+        escrow.expiry = Some(small(&decimal(&input["escrowExpiry"][escrow.slot])?, "escrowExpiry")?);
+    }
+    Ok(template)
 }
 
 #[cfg(test)]
@@ -865,10 +939,11 @@ mod tests {
         let mut other_payout = input.clone();
         other_payout["sellerPayoutId"][0] = other_payout["sellerPayoutId"][1].clone();
         assert!(signed(&statement, &other_payout, &opening).unwrap_err().contains("saleCommitment"));
-        // Escrow terms: the fee cap, the refund script and the escrow id are in the leaf.
-        for field in ["feeCap", "refundScriptId", "escrowId"] {
+        // Escrow terms: the fee cap, the refund script, the escrow id and (M17) the escrow expiry
+        // are in the leaf. The expiries of this batch are all equal, so one is moved instead.
+        for field in ["feeCap", "refundScriptId", "escrowId", "escrowExpiry"] {
             let mut other = input.clone();
-            other[field][1] = other[field][2].clone();
+            other[field][1] = if field == "escrowExpiry" { (decimal(&other[field][1]).unwrap() + 1u64).to_string().into() } else { other[field][2].clone() };
             let err = signed(&statement, &other, &opening).unwrap_err();
             assert!(err.contains("escrowCommitment"), "{field}: {err}");
         }
@@ -929,12 +1004,163 @@ mod tests {
         assert_eq!(Kind::from_circuit("accounting16x4_committed").unwrap(), Kind::Accounting);
         assert_eq!(Kind::from_circuit("signed_tree_16x4").unwrap(), Kind::SignedTree { sales: 16, buyers: 4 });
         assert_eq!(Kind::from_circuit("signed_tree_128x8").unwrap().statement_len(), 36);
-        for bad in ["", "signed_tree_", "signed_tree_16", "signed_tree_15x4", "signed_tree_16x0", "signed_tree_16x36", "clearing16x4_signed"] {
+        for bad in ["", "signed_tree_", "signed_tree_16", "signed_tree_15x4", "signed_tree_16x0", "signed_tree_16x36", "clearing16x4_signed",
+                    "owned_tree_pk_", "owned_tree_pk_16", "owned_tree_pk_15x4", "owned_tree_pk_16x35", "owned_tree_bin_16x4"] {
             assert!(Kind::from_circuit(bad).is_err(), "{bad:?}");
         }
+        // 4 + 4 * 35 = 144 values fit two levels of 12; the joined statement's 145th does not.
+        assert!(Kind::from_circuit("signed_tree_16x35").is_ok());
+        let joined = Kind::from_circuit("owned_tree_pk_16x4").unwrap();
+        assert_eq!(joined, Kind::OwnedTreePacked { sales: 16, buyers: 4 });
+        assert_eq!(joined.statement_len(), 21);
+        assert_eq!(joined.refund_index(1), 4 + 8 + 1);
+        assert_eq!(joined.value_name(20), "windowRoot");
+        assert_eq!(joined.value_name(joined.refund_index(3)), "refund[3]");
+        assert!(joined.height_from_template() && !Kind::SignedTree { sales: 16, buyers: 4 }.height_from_template());
+        assert_eq!(joined.buyer_slots(), Some(4));
+        assert_eq!(Kind::Accounting.buyer_slots(), None);
         let kind = Kind::SignedTree { sales: 16, buyers: 4 };
         assert_eq!(kind.refund_index(1), 4 + 8 + 1);
         assert_eq!(Kind::Accounting.refund_index(1), refund(1));
         assert_eq!(kind.value_name(kind.refund_index(0)), "refund[0]");
+    }
+
+    #[test]
+    fn signed_template_exposes_height_and_committed_expiries() {
+        let (hash, statement, input, opening, ..) = signed_vectors();
+        let t = Kind::SignedTree { sales: 16, buyers: 4 }.build_hashed(&hash, &statement, &input, &opening, &BigUint::from(0u8)).unwrap();
+        assert_eq!(t.batch_height, Some(905_000));
+        assert_eq!(t.escrows.iter().map(|e| e.expiry).collect::<Vec<_>>(), vec![Some(905_144); 4]);
+        // M1's and M3's templates have neither.
+        let (signals, input, opening, commitment) = vectors();
+        let m1 = build(&signals, &input, &opening, &commitment).unwrap();
+        assert_eq!(m1.batch_height, None);
+        assert!(m1.escrows.iter().all(|e| e.expiry.is_none()));
+    }
+
+    // ---- M17: the joined statement (owned_tree_pk_16x4) ----
+
+    const JOINED: Kind = Kind::OwnedTreePacked { sales: 16, buyers: 4 };
+
+    /// The regtest batch of batch_joined.py, in the order of `signed_vectors`.
+    fn joined_vectors() -> (BigUint, Vec<BigUint>, Value, Value, BigUint, BigUint) {
+        let reference = vector("owned-batch-statement.json");
+        let hash = integers(&vector("owned-batch-public.json")).remove(0);
+        let statement = integers(&reference["statement"]);
+        let sale: BigUint = reference["saleCommitment"].as_str().unwrap().parse().unwrap();
+        let escrow: BigUint = reference["escrowCommitment"].as_str().unwrap().parse().unwrap();
+        (hash, statement, vector("owned-batch-input.json"), vector("owned-batch-opening.json"), sale, escrow)
+    }
+
+    fn joined(statement: &[BigUint], input: &Value, opening: &Value) -> Result<Template, String> {
+        let hash = signed_statement_hash(statement)?;
+        JOINED.build_hashed(&hash, statement, input, opening, &BigUint::from(0u8))
+    }
+
+    #[test]
+    fn joined_statement_hash_equals_the_proof_and_circomlibjs() {
+        let (hash, statement, input, _, sale, escrow) = joined_vectors();
+        assert_eq!(statement.len(), JOINED.statement_len());
+        // 21 values: PoseidonChunked = Poseidon2(Poseidon12(v[0..12]), Poseidon9(v[12..21])).
+        assert_eq!(signed_statement_hash(&statement).unwrap(), hash);
+        let reference = vector("owned-batch-statement.json");
+        assert_eq!(hash.to_string(), reference["statementHash"].as_str().unwrap());
+        assert_eq!(reference["ownershipRoot"].as_str().unwrap(), statement[20].to_string());
+        // M15's own fixture statement (statement_joined_tree.js on the run.sh example).
+        let fixture = vector("owned-m15-16x4-statement.json");
+        let values = integers(&fixture["statement"]);
+        assert_eq!(values.len(), 21);
+        assert_eq!(signed_statement_hash(&values).unwrap().to_string(), fixture["statementHash"].as_str().unwrap());
+        // Both commitments equal circomlibjs's.
+        assert_eq!(sale_commitment(&input).unwrap(), sale);
+        assert_eq!(statement[SIGNED_SALE_COMMITMENT], sale);
+        assert_eq!(escrow_commitment(&input, &statement[signed_funding(0)..signed_funding(4)]).unwrap(), escrow);
+        assert_eq!(statement[SIGNED_ESCROW_COMMITMENT], escrow);
+        // The statement's values are the circuit input's, and the root is the input's windowRoot.
+        assert_eq!(statement[SIGNED_BATCH_HEIGHT], decimal(&input["batchHeight"]).unwrap());
+        assert_eq!(statement[signed_window_root(4)], decimal(&input["windowRoot"]).unwrap());
+    }
+
+    #[test]
+    fn joined_template_exposes_the_batch_height_and_every_committed_expiry() {
+        let (hash, statement, input, opening, ..) = joined_vectors();
+        let t = JOINED.build_hashed(&hash, &statement, &input, &opening, &BigUint::from(0u8)).unwrap();
+        assert_eq!(t.batch_height, Some(230));
+        assert_eq!(t.escrows.len(), 4);
+        for (b, escrow) in t.escrows.iter().enumerate() {
+            assert_eq!(escrow.slot, b);
+            assert_eq!(escrow.expiry, Some(257), "buyer {b}: batchHeight + 27");
+        }
+        // 16 seller outputs, 4 refunds and the fee, as M14's batch.
+        assert_eq!(t.outputs.len(), 21);
+        assert_eq!(t.outputs.iter().map(|o| o.amount).sum::<u64>(), t.escrows.iter().map(|e| e.amount).sum::<u64>());
+    }
+
+    #[test]
+    fn joined_template_binds_the_window_root() {
+        let (_, statement, input, opening, ..) = joined_vectors();
+        assert!(joined(&statement, &input, &opening).is_ok());
+        // The opening publishes another root: the committee refuses.
+        let mut other_opening = opening.clone();
+        let root = other_opening["window_root"].as_str().unwrap().to_string();
+        other_opening["window_root"] = (root.parse::<BigUint>().unwrap() + 1u64).to_string().into();
+        assert!(joined(&statement, &input, &other_opening).unwrap_err().contains("differs from the root in the opening"));
+        let mut no_root = opening.clone();
+        no_root.as_object_mut().unwrap().remove("window_root");
+        assert!(joined(&statement, &input, &no_root).unwrap_err().contains("no window_root"));
+        // The circuit input carries another root than the statement.
+        let mut other_input = input.clone();
+        other_input["windowRoot"] = (decimal(&input["windowRoot"]).unwrap() + 1u64).to_string().into();
+        assert!(joined(&statement, &other_input, &opening).unwrap_err().contains("circuit input"));
+        // A statement with another last value hashes to another value: the proof's hash refuses it.
+        let (hash, ..) = joined_vectors();
+        let mut moved = statement.clone();
+        moved[signed_window_root(4)] += 1u64;
+        assert!(JOINED.build_hashed(&hash, &moved, &input, &opening, &BigUint::from(0u8)).unwrap_err().contains("does not hash"));
+        // M11's 20 values under the joined kind, or 21 values under M11's: refused by length.
+        let (hash, ..) = joined_vectors();
+        assert!(JOINED.build_hashed(&hash, &statement[..20], &input, &opening, &BigUint::from(0u8)).is_err());
+        assert!(Kind::SignedTree { sales: 16, buyers: 4 }.build_hashed(&hash, &statement, &input, &opening, &BigUint::from(0u8)).is_err());
+    }
+
+    #[test]
+    fn joined_template_binds_every_escrow_expiry_through_the_commitment() {
+        let (_, statement, input, opening, ..) = joined_vectors();
+        // An operator that proves with one expiry and hands the committee another: the escrow
+        // leaf, and so escrowCommitment, changes.
+        for b in 0..4 {
+            let mut later = input.clone();
+            later["escrowExpiry"][b] = (decimal(&input["escrowExpiry"][b]).unwrap() + 1u64).to_string().into();
+            assert!(joined(&statement, &later, &opening).unwrap_err().contains("escrowCommitment"), "buyer {b}");
+        }
+    }
+
+    #[test]
+    fn joined_template_keeps_m14s_checks() {
+        let (_, statement, input, opening, ..) = joined_vectors();
+        let base = joined(&statement, &input, &opening).unwrap();
+        let mut other_price = input.clone();
+        other_price["price"][3] = (decimal(&input["price"][3]).unwrap() + 1u64).to_string().into();
+        assert!(joined(&statement, &other_price, &opening).unwrap_err().contains("saleCommitment"));
+        let mut swapped_seller = opening.clone();
+        swapped_seller["sale_slots"][4]["seller_payee"] = "scale-payout:5".into();
+        assert!(joined(&statement, &input, &swapped_seller).unwrap_err().contains("sellerPayoutId"));
+        let r = zkc_convert::fr_modulus();
+        for i in 0..statement.len() {
+            let mut plus_r = statement.clone();
+            plus_r[i] += &r;
+            assert!(joined(&plus_r, &input, &opening).unwrap_err().contains("not below r"), "value {i}");
+        }
+        // S': the tampered scenario's statement builds another template under its own hash.
+        let moved = JOINED.moved_for(&statement);
+        assert_eq!(moved, 10_000);
+        let mut tampered = statement.clone();
+        tampered[JOINED.refund_index(0)] += moved;
+        tampered[JOINED.refund_index(1)] -= moved;
+        let other = joined(&tampered, &input, &opening).unwrap();
+        assert_ne!(other, base);
+        assert_eq!(other.batch_height, base.batch_height);
+        assert_eq!(other.outputs[16].amount, base.outputs[16].amount + 10_000);
+        assert_eq!(other.outputs[17].amount, base.outputs[17].amount - 10_000);
     }
 }

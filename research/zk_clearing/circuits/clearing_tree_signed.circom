@@ -36,8 +36,10 @@ pragma circom 2.1.8;
 //
 // saleCommitment is the root of the binary Poseidon2 tree (M6) over Poseidon6 sale leaves
 // (activeSale, saleId, sellerId, price, selected buyerId, sellerPayoutId). escrowCommitment is
-// PoseidonChunked over each buyer's Poseidon5 escrow leaf (active, escrowId, funding, feeCap,
-// refundScriptId); up to 12 buyer slots it is a single Poseidon.
+// PoseidonChunked over each buyer's Poseidon6 escrow leaf (active, escrowId, funding, feeCap,
+// refundScriptId, escrowExpiry); up to 12 buyer slots it is a single Poseidon. The leaf holds
+// the escrow expiry the buyer signed, so a committee that opens escrowCommitment sees the
+// height each escrow's CLTV refund must use (M17).
 //
 // statementHash is a public input constrained to equal the hash of the statement, so a wrong
 // claimed hash fails in the witness calculator. Its wire is the same as an output's would be.
@@ -285,12 +287,13 @@ template SignedClearingTree(saleSlots, buyerSlots, depth, extraValues) {
         escrow[buyer].R8y <== escrowR8y[buyer];
         escrow[buyer].S <== escrowS[buyer];
 
-        escrowLeaf[buyer] = Poseidon(5);
+        escrowLeaf[buyer] = Poseidon(6);
         escrowLeaf[buyer].inputs[0] <== activeBuyer[buyer];
         escrowLeaf[buyer].inputs[1] <== escrowId[buyer];
         escrowLeaf[buyer].inputs[2] <== funding[buyer];
         escrowLeaf[buyer].inputs[3] <== feeCap[buyer];
         escrowLeaf[buyer].inputs[4] <== refundScriptId[buyer];
+        escrowLeaf[buyer].inputs[5] <== escrowExpiry[buyer];
         escrowRoot.in[buyer] <== escrowLeaf[buyer].out;
     }
 

@@ -1,0 +1,22 @@
+    5 blocks  challenge: blocks to get a challenge mined after the kickoff
+    6 blocks  unchallenged payout: blocks before the timeout opens
+    3 blocks  assert: blocks to spare after a last-block challenge
+    6 blocks  disprove: blocks to get a disprove mined after A
+    7 blocks  refund: blocks the latest payout has before refunds open
+    2 blocks  bound refund: blocks the latest payout has before the earliest signed expiry opens
+get_signature_from_assertion
+[time] partial disprove scripts: 0.8 s
+api_generate_full_tapscripts; append_bitcom_locking_script_to_partial_scripts
+append_bitcom_locking_script_to_partial_scripts; generage_segments_using_mock_vk_and_mock_proof
+append_bitcom_locking_script_to_partial_scripts; bitcom_scripts_from_segments
+[time] full tapscripts: 2.8 s
+[time] hash disprove leaves: 0.6 s
+  kickoff(before batchHeight)  rejected: mempool non-final; block TestBlockValidity failed: bad-txns-nonfinal, non-final transaction
+  kickoff                            298 vB  "accepted"
+  payout_unchallenged(early)   rejected: mempool non-BIP68-final; block TestBlockValidity failed: bad-txns-nonfinal, contains a non-BIP68-final transaction e80bd81bab07c100e1bc95ac30408f0a3ba6db8cb17b6500dc240c7321f6addd
+  timeout(early)               rejected: mempool non-BIP68-final; block TestBlockValidity failed: bad-txns-nonfinal, contains a non-BIP68-final transaction 9d3ef8ce50be7f4bf3c2a5ac904043b2b5c703ccdb8a3da87dce7b545a15cf74
+  payout_unchallenged               1359 vB  "accepted"
+  challenge(after payout)      rejected: mempool missing-inputs; block TestBlockValidity failed: bad-txns-inputs-missingorspent, CheckTxInputs: inputs missing/spent in transaction 560b6550351e5d549b28425f0db73586cf87fc812c28022d9463b27774e18949
+  timeout(after payout)        rejected: mempool missing-inputs; block TestBlockValidity failed: bad-txns-inputs-missingorspent, CheckTxInputs: inputs missing/spent in transaction 9d3ef8ce50be7f4bf3c2a5ac904043b2b5c703ccdb8a3da87dce7b545a15cf74
+wrote /root/zkc-m17/m13/anchored-2-bound/scenario-unchallenged.json
+scenario unchallenged: 7.46 s, 2952316 KiB max RSS

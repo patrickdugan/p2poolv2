@@ -41,7 +41,7 @@ escrow=$(count part_escrow "SignedEscrow()" "$TREE_SIGNED")
 amounts=$(count part_amounts "ClearingAmounts($SALES, $BUYERS)" "$CIRCUITS/clearing.circom")
 saleleaf=$(count part_saleleaf "Poseidon(6)" "$POSEIDON")
 tree=$(count part_tree "PoseidonTreeRoot($DEPTH)" "$CIRCUITS/clearing_tree.circom")
-escrowleaf=$(count part_escrowleaf "Poseidon(5)" "$POSEIDON")
+escrowleaf=$(count part_escrowleaf "Poseidon(6)" "$POSEIDON")
 escrowroot=$(count part_escrowroot "PoseidonChunked($BUYERS)" "$TREE_SIGNED")
 statement=$(count part_statement "PoseidonChunked($STATEMENT)" "$TREE_SIGNED")
 height=$(count part_height "Bits51()" "$CIRCUITS/clearing.circom")
@@ -68,7 +68,7 @@ printf '%-46s %10s %8s %12s\n' "ClearingAmounts (arithmetic, ranges, selectors)"
 printf '%-46s %10s %8s %12s\n' "selected-buyer products (selector x buyerId)" 1 "$selected" "$selected"
 printf '%-46s %10s %8s %12s\n' "sale leaf Poseidon(6)" "$saleleaf" "$SALES" "$((SALES * saleleaf))"
 printf '%-46s %10s %8s %12s\n' "sale tree: $((SALES - 1)) x Poseidon(2)" "$tree" 1 "$tree"
-printf '%-46s %10s %8s %12s\n' "escrow leaf Poseidon(5)" "$escrowleaf" "$BUYERS" "$((BUYERS * escrowleaf))"
+printf '%-46s %10s %8s %12s\n' "escrow leaf Poseidon(6)" "$escrowleaf" "$BUYERS" "$((BUYERS * escrowleaf))"
 printf '%-46s %10s %8s %12s\n' "escrow commitment PoseidonChunked($BUYERS)" "$escrowroot" 1 "$escrowroot"
 printf '%-46s %10s %8s %12s\n' "statement hash PoseidonChunked($STATEMENT)" "$statement" 1 "$statement"
 printf '%-46s %10s %8s %12s\n' "batchHeight Bits51" "$height" 1 "$height"

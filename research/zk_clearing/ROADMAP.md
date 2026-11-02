@@ -137,9 +137,14 @@ Engineering that can be done next without anyone else:
    It saw 7 empty blocks in a row and a 4-block reorg that moved assert_final past T_assert. The
    T values were sized on regtest; size them from a chain's record of empty blocks and reorg
    depth.
-2. **One statement for everything.** M15's joined circuit through M14's BitVM pipeline on M13's
-   bound, anchored graph, so one regtest run covers signatures, ownership, fees and heights.
-   With the packed tree it stays under power 23.
+2. **One statement for everything. Done (M17).** M15's packed joined circuit
+   (`owned_tree_pk_16x4`, 152,937 constraints) runs through M14's one-input BitVM pipeline on M13's
+   bound, anchored graph in one regtest run per scenario: unchallenged (1,657 vB on chain),
+   challenged (assert chain 336,745 vB), tampered (disproved at leaf 363), late and stall. The
+   kickoff's lock time, the deadline connector and every escrow's CLTV refund come from numbers in
+   the proven statement. For that, the escrow leaf now binds `escrowExpiry` (Poseidon6, +33
+   constraints per buyer slot), so the committee reads each expiry from `escrowCommitment`. Details
+   and what is still unbound: [bitvm/M17.md](bitvm/M17.md).
 
 Waiting on Patrick or third parties (details in M8):
 

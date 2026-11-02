@@ -1,0 +1,24 @@
+    5 blocks  challenge: blocks to get a challenge mined after the kickoff
+    6 blocks  unchallenged payout: blocks before the timeout opens
+    3 blocks  assert: blocks to spare after a last-block challenge
+    6 blocks  disprove: blocks to get a disprove mined after A
+    7 blocks  refund: blocks the latest payout has before refunds open
+    2 blocks  bound refund: blocks the latest payout has before the earliest signed expiry opens
+get_signature_from_assertion
+[time] partial disprove scripts: 0.4 s
+api_generate_full_tapscripts; append_bitcom_locking_script_to_partial_scripts
+append_bitcom_locking_script_to_partial_scripts; generage_segments_using_mock_vk_and_mock_proof
+append_bitcom_locking_script_to_partial_scripts; bitcom_scripts_from_segments
+[time] full tapscripts: 2.9 s
+[time] hash disprove leaves: 0.6 s
+  kickoff(before batchHeight)  rejected: mempool non-final; block TestBlockValidity failed: bad-txns-nonfinal, non-final transaction
+  sweep(before deadline)       rejected: mempool non-final; block TestBlockValidity failed: bad-txns-nonfinal, non-final transaction
+  sweep                              105 vB  "accepted"
+  kickoff(after deadline)      rejected: mempool missing-inputs; block TestBlockValidity failed: bad-txns-inputs-missingorspent, CheckTxInputs: inputs missing/spent in transaction e92833a52a5ed819a3773983fa8ea7d1a398843a512a35ca63970ef253ca23b1
+  refund(early)                rejected: mempool non-final; block TestBlockValidity failed: bad-txns-nonfinal, non-final transaction
+  refund[scale-buyer:0]              130 vB  "accepted"
+  refund[scale-buyer:1]              130 vB  "accepted"
+  refund[scale-buyer:2]              130 vB  "accepted"
+  refund[scale-buyer:3]              130 vB  "accepted"
+wrote /root/zkc-m17/m13/anchored-2-bound/scenario-late.json
+scenario late: 8.03 s, 2952628 KiB max RSS

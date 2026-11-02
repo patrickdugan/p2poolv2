@@ -1,5 +1,5 @@
 //! The conversion on signed_tree_16x4 (M14, M11's circuit, verifying key sha256
-//! ef1a22e3...bf4ad364): one public signal, statementHash, the same verifying-key shape as the
+//! d8937b82...1dc9c6c4): one public signal, statementHash, the same verifying-key shape as the
 //! hashed circuit's. Both proofs verify under ark-groth16, a shifted hash or the other proof's
 //! hash fails, and statementHash + r is refused.
 

@@ -28,6 +28,16 @@
 //!                             the escrows refund through CLTV at an absolute expiry. Adds the
 //!                             scenario `late`: the deadline passes before any kickoff
 //! Their results go to <work>/m13/<graph>-<rate>[-to-<n>][-bound].
+//!
+//! M17: a build with ZKC_PUBS=1 (patch 0002, one public input = statementHash) settles the
+//! statement named by <work>/batch/circuit.txt, as zkc-m1 does: `owned_tree_pk_16x4` is M15's
+//! joined circuit (M11's 4 + 4B values and the window tree's root, hashed by PoseidonChunked).
+//! The committee's template is template::build_signed on the statement's preimage. With
+//! ZKC_BIND_HEIGHT=1 the batch's own heights drive the bound graph: the kickoff's lock time and
+//! the deadline connector come from the statement's batchHeight, each escrow's CLTV refund from
+//! the escrowExpiry its buyer signed (opened by escrowCommitment), and before funding the run
+//! mines up to batchHeight - BATCH_HEIGHT_AFTER_FUNDING - 1. The default build (18 public
+//! signals) runs M1's accounting statement as before.
 
 #[allow(dead_code)]
 #[path = "../../m1/src/chunked.rs"]
@@ -212,11 +222,23 @@ fn height_of(rpc: &rpc::Rpc, t: &Transaction) -> u64 {
     rpc.height() + 1 - rpc.confirmations(&t.compute_txid()).expect("confirmed")
 }
 
+/// M3 and later: the proof's only public signal is statementHash (the build has NUM_PUBS = 1).
+const HASHED: bool = NUM_PUBS == 1;
+const _: () = assert!(NUM_PUBS == 1 || NUM_PUBS == template::NUM_SIGNALS);
+/// The public signal whose binding leaf the challenged scenario probes: refund[0] (M1),
+/// statementHash (one public input).
+const PROBED_SIGNAL: usize = if HASHED { 0 } else { template::refund(0) };
+
 struct Inputs {
     work: PathBuf,
+    /// The statement layout (`circuit.txt`).
+    kind: template::Kind,
     vk: VerifyingKey<Bn254>,
     proof: Proof<Bn254>,
+    /// The proof's public signals (NUM_PUBS of them).
     signals: Vec<BigUint>,
+    /// The clearing statement: `signals` itself in M1, its hash preimage with one public input.
+    statement: Vec<BigUint>,
     input: Value,
     opening: Value,
     commitment: BigUint,
@@ -226,30 +248,91 @@ fn read_json(path: &Path) -> Value {
     serde_json::from_str(&std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))).unwrap()
 }
 
+/// The statement layout of the batch: the circuit name in `<batch>/circuit.txt`; a batch without
+/// one (M1's and M3's) has the 18 accounting values.
+fn batch_kind(batch: &Path) -> template::Kind {
+    match std::fs::read_to_string(batch.join("circuit.txt")) {
+        Ok(name) => template::Kind::from_circuit(name.trim()).unwrap_or_else(|e| panic!("{}: {e}", batch.join("circuit.txt").display())),
+        Err(_) => template::Kind::Accounting,
+    }
+}
+
 fn load(work: &Path) -> Inputs {
     let batch = work.join("batch");
+    let kind = batch_kind(&batch);
+    assert!(kind == template::Kind::Accounting || HASHED, "a signed-tree statement needs the 1-public-input build (ZKC_PUBS=1)");
     let vk = zkc_convert::vk_from_snarkjs(&read_json(&batch.join("verification_key.json"))).unwrap();
     let proof = zkc_convert::proof_from_snarkjs(&read_json(&batch.join("proof.json"))).unwrap();
     let public = read_json(&batch.join("public.json"));
     let fr = zkc_convert::public_from_snarkjs(&public).unwrap();
     assert!(zkc_convert::verify(&vk, &proof, &fr).unwrap(), "batch proof must verify under ark-groth16");
-    Inputs {
+    let signals = zkc_convert::public_integers(&public).unwrap();
+    assert_eq!(signals.len(), NUM_PUBS, "public signals of the batch proof");
+    let statement = if HASHED {
+        zkc_convert::public_integers(&read_json(&batch.join("statement.json"))["statement"]).unwrap()
+    } else {
+        signals.clone()
+    };
+    assert_eq!(statement.len(), kind.statement_len(), "statement length for {kind:?}");
+    let inp = Inputs {
         work: work.to_path_buf(),
+        kind,
         vk,
         proof,
-        signals: zkc_convert::public_integers(&public).unwrap(),
+        signals,
+        statement,
         input: read_json(&batch.join("input.json")),
         opening: read_json(&batch.join("opening.json")),
         commitment: std::fs::read_to_string(batch.join("sale_commitment.txt")).unwrap().trim().parse().unwrap(),
+    };
+    assert_eq!(public_of(kind, &inp.statement), inp.signals, "the statement does not match the proof's public signals");
+    if let Some(buyers) = kind.buyer_slots() {
+        // Two implementations of the commitments agree: circomlibjs (prove-batch.sh) and the Rust
+        // template (light-poseidon), which recomputes both from the circuit input.
+        let escrow: BigUint = std::fs::read_to_string(batch.join("escrow_commitment.txt")).unwrap().trim().parse().unwrap();
+        assert_eq!(template::sale_commitment(&inp.input).expect("sale commitment"), inp.commitment, "saleCommitment: Rust against circomlibjs");
+        let funding = &inp.statement[template::signed_funding(0)..template::signed_funding(buyers)];
+        assert_eq!(template::escrow_commitment(&inp.input, funding).expect("escrow commitment"), escrow, "escrowCommitment: Rust against circomlibjs");
+    }
+    inp
+}
+
+/// The public signals a proof of `statement` carries.
+fn public_of(kind: template::Kind, statement: &[BigUint]) -> Vec<BigUint> {
+    if HASHED {
+        vec![kind.statement_hash(statement).expect("statement hash")]
+    } else {
+        statement.to_vec()
     }
 }
 
-fn tampered(signals: &[BigUint]) -> Vec<BigUint> {
-    let mut s = signals.to_vec();
-    // As in M1: 50,000 sats of refund moved from buyer slot 1 to slot 0, less in a small batch.
-    let moved = template::Kind::Accounting.moved_for(signals);
-    s[template::refund(0)] += moved;
-    s[template::refund(1)] -= moved;
+fn public_name(i: usize) -> String {
+    if HASHED {
+        "statementHash".into()
+    } else {
+        template::signal_name(i)
+    }
+}
+
+/// The committee's payout template for `statement`; with one public input it also checks the
+/// hash preimage and, for the signed kinds, opens both commitments.
+fn template_for(inp: &Inputs, statement: &[BigUint]) -> template::Template {
+    let built = if HASHED {
+        inp.kind.build_hashed(&public_of(inp.kind, statement)[0], statement, &inp.input, &inp.opening, &inp.commitment)
+    } else {
+        template::build(statement, &inp.input, &inp.opening, &inp.commitment)
+    };
+    built.expect("template")
+}
+
+/// The tampered statement S': `Kind::moved_sats` of refund moved from buyer slot 1 to slot 0
+/// (50,000 in M1, less in a small batch), as zkc-m1 does. With one public input S' hashes to h',
+/// which no valid proof carries.
+fn tampered(kind: template::Kind, statement: &[BigUint]) -> Vec<BigUint> {
+    let mut s = statement.to_vec();
+    let moved = kind.moved_for(statement);
+    s[kind.refund_index(0)] += moved;
+    s[kind.refund_index(1)] -= moved;
     s
 }
 
@@ -671,11 +754,12 @@ fn scenario(inp: &Inputs, run: &Run, name: &str) {
 
     // The committee presigns payouts for the operator's proposed statement. In `tampered` that
     // statement is S' (refund moved between buyers), which the batch proof does not prove.
-    let template_signals = if name == "tampered" { tampered(&inp.signals) } else { inp.signals.clone() };
-    let tpl = template::build(&template_signals, &inp.input, &inp.opening, &inp.commitment).expect("template");
+    let template_statement = if name == "tampered" { tampered(inp.kind, &inp.statement) } else { inp.statement.clone() };
+    let template_signals = public_of(inp.kind, &template_statement);
+    let tpl = template_for(inp, &template_statement);
     let template_outputs = outputs_of(&keys, &tpl);
     facts["template_outputs"] = json!(tpl.outputs.iter().map(|o| json!({"role": o.role, "payee": o.payee, "sats": o.amount})).collect::<Vec<_>>());
-    facts["template_signals_differ_from_proof"] = json!((0..NUM_PUBS).filter(|i| template_signals[*i] != inp.signals[*i]).map(template::signal_name).collect::<Vec<_>>());
+    facts["template_signals_differ_from_proof"] = json!((0..NUM_PUBS).filter(|i| template_signals[*i] != inp.signals[*i]).map(public_name).collect::<Vec<_>>());
 
     // The operator's one-time Winternitz keys for this graph and its commit leaves. The assert
     // chain is sized for the largest witness any assertion can have.
@@ -702,11 +786,37 @@ fn scenario(inp: &Inputs, run: &Run, name: &str) {
     // Bound (M13): the funding block is the next one and the statement's batchHeight is
     // h_e + BATCH_HEIGHT_AFTER_FUNDING. Each escrow refunds through CLTV at the escrowExpiry its
     // buyer signed, which the batch proof holds to at least batchHeight + ESCROW_AFTER_BATCH.
+    //
+    // M17: a batch whose statement fixes batchHeight (Kind::height_from_template) is proven before
+    // the run, so the run mines up to batchHeight - BATCH_HEIGHT_AFTER_FUNDING - 1 first, and the
+    // expiries are the buyers' committed ones.
+    let template_height = if run.bound && inp.kind.height_from_template() {
+        let height = tpl.batch_height.expect("the statement's batchHeight");
+        let before_funding = height.checked_sub(BATCH_HEIGHT_AFTER_FUNDING + 1).expect("batchHeight below the funding block");
+        let tip = rpc.height();
+        assert!(tip <= before_funding, "the chain is at {tip}, past {before_funding}: batchHeight {height} cannot follow the funding block");
+        advance(&rpc, &miner, before_funding - tip);
+        Some(u32::try_from(height).expect("batchHeight fits a lock time"))
+    } else {
+        None
+    };
     let h_e_expected = rpc.height() + 1;
-    let batch_height = run.bound.then(|| (h_e_expected + BATCH_HEIGHT_AFTER_FUNDING) as u32);
-    let escrow_expiry = batch_height.map(|h| h + SIGNED_ESCROW_AFTER_BATCH as u32);
+    let batch_height = template_height.or_else(|| run.bound.then(|| (h_e_expected + BATCH_HEIGHT_AFTER_FUNDING) as u32));
+    let expiry_of = |slot: &template::EscrowSpec| -> Option<u32> {
+        let height = batch_height?;
+        match slot.expiry.filter(|_| template_height.is_some()) {
+            Some(committed) => {
+                // The expiry the buyer signed and escrowCommitment opens to; the proof holds it to
+                // at least batchHeight + ESCROW_AFTER_BATCH, and the driver checks the same.
+                assert!(committed >= u64::from(height) + ESCROW_AFTER_BATCH, "escrow {} expires at {committed}, below batchHeight {height} + {ESCROW_AFTER_BATCH}", slot.buyer);
+                Some(u32::try_from(committed).expect("escrowExpiry fits a lock time"))
+            }
+            None => Some(height + SIGNED_ESCROW_AFTER_BATCH as u32),
+        }
+    };
     assert!(SIGNED_ESCROW_AFTER_BATCH >= ESCROW_AFTER_BATCH, "the signed escrow expiry is below what the batch proof accepts");
-    let mut escrows: Vec<Escrow> = tpl.escrows.iter().map(|s| Escrow::new(&keys, &s.buyer, escrow_expiry)).collect();
+    let escrow_expiries: Vec<Option<u32>> = tpl.escrows.iter().map(expiry_of).collect();
+    let mut escrows: Vec<Escrow> = tpl.escrows.iter().zip(&escrow_expiries).map(|(s, expiry)| Escrow::new(&keys, &s.buyer, *expiry)).collect();
     let challenger = keypair(&keys.secp, "challenger");
     let challenger_script = payee_script(&keys, "challenger");
     if run.live {
@@ -768,7 +878,8 @@ fn scenario(inp: &Inputs, run: &Run, name: &str) {
         assert_eq!(h_e, h_e_expected, "funding confirmed in an unexpected block");
     }
     facts["batch_height"] = json!(batch_height);
-    facts["escrow_expiry_height"] = json!(escrow_expiry);
+    facts["batch_height_from_template"] = json!(template_height.is_some());
+    facts["escrow_expiry_heights"] = json!(escrow_expiries);
     facts["deadline"] = json!(deadline.as_ref().map(|d| json!({"height": d.height, "sats": d.utxo.sats(), "outpoint": d.utxo.outpoint.to_string()})));
     facts["escrows"] = json!(escrows.iter().map(|e| json!({"buyer": e.buyer, "outpoint": e.utxo.outpoint.to_string(), "sats": e.utxo.sats()})).collect::<Vec<_>>());
     facts["funded_height"] = json!(h_e);
@@ -1010,7 +1121,7 @@ fn scenario(inp: &Inputs, run: &Run, name: &str) {
             let asserted_pubs: Vec<String> = (0..NUM_PUBS).map(|i| hex::encode(Wots32::signature_to_message(&chain_sigs.0[chunked::pub_slot(i)]))).collect();
             facts["asserted_differs_from_template"] = json!((0..NUM_PUBS)
                 .filter(|i| hex::decode(&asserted_pubs[*i]).unwrap() != chunked::u256_assertion(&template_signals[*i]))
-                .map(template::signal_name)
+                .map(public_name)
                 .collect::<Vec<_>>());
             if name == "challenged" {
                 if run.validate {
@@ -1022,11 +1133,11 @@ fn scenario(inp: &Inputs, run: &Run, name: &str) {
                     assert!(!chunked::leaf_succeeds(&s.full[last], &items));
                     let fake = disprove_tx(&keys, &s, last, &s.full[last], items, challenger_script.clone(), market);
                     facts["negative_disprove_final_chunk"] = trace.reject(&rpc, &miner, "disprove(final chunk)", &fake, "honest witness for the validating leaf");
-                    let i = template::refund(0);
+                    let i = PROBED_SIGNAL;
                     let items = chunked::binding_witness(&chain_sigs, i);
                     assert!(!chunked::leaf_succeeds(&s.binding[i], &items));
                     let fake = disprove_tx(&keys, &s, binding_index(i), &s.binding[i], items, challenger_script.clone(), market);
-                    facts["negative_disprove_binding"] = trace.reject(&rpc, &miner, "disprove(binding refund[0])", &fake, "honest commitment against its own binding leaf");
+                    facts["negative_disprove_binding"] = trace.reject(&rpc, &miner, &format!("disprove(binding {})", public_name(i)), &fake, "honest commitment against its own binding leaf");
                 } else {
                     facts["bitvm_validate"] = json!("skipped (ZKC_VALIDATE=0)");
                 }
@@ -1328,13 +1439,17 @@ fn refunds(rpc: &rpc::Rpc, miner: &Address, keys: &Keys, trace: &mut Trace, escr
     let txs: Vec<Transaction> = escrows.iter().map(|e| refund_tx(keys, e, payee(e), rate)).collect();
     let funded: Vec<u64> = escrows.iter().map(|e| rpc.confirmations(&e.utxo.outpoint.txid).unwrap()).collect();
     let youngest = *funded.iter().min().unwrap();
-    if let Some(expiry) = escrows[0].expiry {
-        // CLTV (M13): a refund enters the next block once the tip is at the expiry height.
-        if rpc.height() + 1 < u64::from(expiry) {
-            mine_to_tip(rpc, miner, u64::from(expiry) - 1);
-            facts["negative_early_refund"] = trace.reject(rpc, miner, "refund(early)", &txs[0], "one block before the escrow expiry");
+    if escrows[0].expiry.is_some() {
+        // CLTV (M13): a refund enters the next block once the tip is at the expiry height. Each
+        // escrow has the expiry its buyer signed (M17): the early probe is the soonest escrow's.
+        let expiries: Vec<u64> = escrows.iter().map(|e| u64::from(e.expiry.expect("every escrow of a bound run has an expiry"))).collect();
+        let (first, last) = (expiries.iter().copied().min().unwrap(), expiries.iter().copied().max().unwrap());
+        if rpc.height() + 1 < first {
+            mine_to_tip(rpc, miner, first - 1);
+            let soonest = expiries.iter().position(|e| *e == first).unwrap();
+            facts["negative_early_refund"] = trace.reject(rpc, miner, "refund(early)", &txs[soonest], "one block before the escrow expiry");
         }
-        mine_to_tip(rpc, miner, rpc.height().max(u64::from(expiry)));
+        mine_to_tip(rpc, miner, rpc.height().max(last));
     } else if youngest + 1 < u64::from(T_REFUND) {
         // A refund enters the next block once its escrow has T_refund confirmations at the tip.
         advance(rpc, miner, u64::from(T_REFUND) - 1 - youngest);

@@ -1,0 +1,38 @@
+    5 blocks  challenge: blocks to get a challenge mined after the kickoff
+    6 blocks  unchallenged payout: blocks before the timeout opens
+    3 blocks  assert: blocks to spare after a last-block challenge
+    6 blocks  disprove: blocks to get a disprove mined after A
+    7 blocks  refund: blocks the latest payout has before refunds open
+    2 blocks  bound refund: blocks the latest payout has before the earliest signed expiry opens
+get_signature_from_assertion
+[time] partial disprove scripts: 0.4 s
+api_generate_full_tapscripts; append_bitcom_locking_script_to_partial_scripts
+append_bitcom_locking_script_to_partial_scripts; generage_segments_using_mock_vk_and_mock_proof
+append_bitcom_locking_script_to_partial_scripts; bitcom_scripts_from_segments
+[time] full tapscripts: 3.0 s
+[time] hash disprove leaves: 0.6 s
+  kickoff(before batchHeight)  rejected: mempool non-final; block TestBlockValidity failed: bad-txns-nonfinal, non-final transaction
+  kickoff                            298 vB  "accepted"
+  challenge                          212 vB  "accepted"
+  payout_unchallenged(challenged) rejected: mempool missing-inputs; block TestBlockValidity failed: bad-txns-inputs-missingorspent, CheckTxInputs: inputs missing/spent in transaction ba2ba84685b83e1a46a36c991ec3194fb1ed3cbc8fc2748dd4c29c9a50d5db29
+get_signature_from_assertion
+  assert_init                       1530 vB  "accepted"
+  commit[0]                        92021 vB  "accepted"
+  commit[1] beside an unconfirmed assert_init and commit[0]: too-large-cluster
+  commit[1]                        92312 vB  "accepted"
+  commit[2]                        92315 vB  "accepted"
+  commit[3]                        58183 vB  "accepted"
+  assert_final                       384 vB  "accepted"
+validate_assertions; get_assertions_from_signature
+get_assertions_from_signature
+validate_assertions; get_segments_from_assertion
+validate_assertions; execute_script_from_signature
+[time] challenger validates: 99.1 s
+get_assertions_from_signature
+  disprove(final chunk)        rejected: mempool tx-size; block TestBlockValidity failed: block-script-verify-flag-failed (Script evaluated without error but finished with a false/empty top stack element), input 1 of e952368d52d604caf0a9f37ff558153be5122740b6254e1a169319188ceec016 (wtxid 954d23bc9c0d7fd648c9ceb4a862f998f3536236b545a7616d4f6b276cb12212), spending 2c00e326d3b61a303f6726643991fb1c6da04288dd22da531cd41a90efaaf2c3:0
+  disprove(binding statementHash) rejected: mempool mempool-script-verify-flag-failed (Script evaluated without error but finished with a false/empty top stack element); block TestBlockValidity failed: block-script-verify-flag-failed (Script evaluated without error but finished with a false/empty top stack element), input 1 of 674291ec213cbb7a487c8a78bc559434d176ad8ee5444bdda7717666777277a2 (wtxid 0a58349cf222fe8ed278c06130a69c52a87db8ed3b83d8bce9174dd9121e2a2f), spending 2c00e326d3b61a303f6726643991fb1c6da04288dd22da531cd41a90efaaf2c3:0
+  payout_asserted(early)       rejected: mempool non-BIP68-final; block TestBlockValidity failed: bad-txns-nonfinal, contains a non-BIP68-final transaction f83c01e608b0f57a20e79bcc4be20ac619d387611189e097c3018dde56b25e2a
+  payout_asserted                   1368 vB  "accepted"
+  timeout(after assert)        rejected: mempool missing-inputs; block TestBlockValidity failed: bad-txns-inputs-missingorspent, CheckTxInputs: inputs missing/spent in transaction 3ce4cdb5ccb4f36269a9127ddd8c8c0d08d1495bceb27bb596bdecd3b212b614
+wrote /root/zkc-m17/m13/anchored-2-bound/scenario-challenged.json
+scenario challenged: 171.27 s, 3258860 KiB max RSS

@@ -1,0 +1,15 @@
+     Running unittests src/lib.rs (/root/zkc-m17/target/release/deps/zkc_convert-fed7102376c6b08e)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/main.rs (/root/zkc-m17/target/release/deps/zkc_convert-c4cc0e4566e14d4c)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/hashed_vectors.rs (/root/zkc-m17/target/release/deps/hashed_vectors-54afb1ac40016003)
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+     Running tests/signed_vectors.rs (/root/zkc-m17/target/release/deps/signed_vectors-96322e29b52d9ab9)
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+     Running tests/snarkjs_vectors.rs (/root/zkc-m17/target/release/deps/snarkjs_vectors-58356d5ba675fcb6)
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+     Running unittests src/main.rs (/root/zkc-m17/target/release/deps/zkc_m1-8673da51d0fe02e5)
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+     Running unittests src/main.rs (/root/zkc-m17/target/release/deps/zkc_m2-31e0a44441142033)
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

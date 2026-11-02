@@ -1,0 +1,40 @@
+    5 blocks  challenge: blocks to get a challenge mined after the kickoff
+    6 blocks  unchallenged payout: blocks before the timeout opens
+    3 blocks  assert: blocks to spare after a last-block challenge
+    6 blocks  disprove: blocks to get a disprove mined after A
+    7 blocks  refund: blocks the latest payout has before refunds open
+    2 blocks  bound refund: blocks the latest payout has before the earliest signed expiry opens
+get_signature_from_assertion
+[time] partial disprove scripts: 2.9 s
+api_generate_full_tapscripts; append_bitcom_locking_script_to_partial_scripts
+append_bitcom_locking_script_to_partial_scripts; generage_segments_using_mock_vk_and_mock_proof
+append_bitcom_locking_script_to_partial_scripts; bitcom_scripts_from_segments
+[time] full tapscripts: 2.9 s
+[time] hash disprove leaves: 0.6 s
+  kickoff(before batchHeight)  rejected: mempool non-final; block TestBlockValidity failed: bad-txns-nonfinal, non-final transaction
+  kickoff                            298 vB  "accepted"
+  challenge                          212 vB  "accepted"
+get_signature_from_assertion
+  assert_init                       1530 vB  "accepted"
+  commit[0]                        92025 vB  "accepted"
+  commit[1]                        92318 vB  "accepted"
+  commit[2]                        92308 vB  "accepted"
+  commit[3]                        58180 vB  "accepted"
+  assert_final                       384 vB  "accepted"
+validate_assertions; get_assertions_from_signature
+get_assertions_from_signature
+validate_assertions; get_segments_from_assertion
+invalid tapscript at segment 379
+validate_assertions; execute_script_from_signature
+disprove script 378: tapindex 363, PostMillerFinalVerify
+[time] challenger validates: 98.5 s
+  disprove                        238982 vB  "tx-size"
+  payout_asserted(after disprove) rejected: mempool missing-inputs; block TestBlockValidity failed: bad-txns-inputs-missingorspent, CheckTxInputs: inputs missing/spent in transaction 278bd9a715de4c901446425d8c0cda1b16daf3c2d15fbe9ae3a139442df57013
+  timeout(after disprove)      rejected: mempool missing-inputs; block TestBlockValidity failed: bad-txns-inputs-missingorspent, CheckTxInputs: inputs missing/spent in transaction a99d4ee1daaeec9c592f261374f1efdd94e04d49d4f3a6584af498485f598f96
+  refund(early)                rejected: mempool non-final; block TestBlockValidity failed: bad-txns-nonfinal, non-final transaction
+  refund[scale-buyer:0]              130 vB  "accepted"
+  refund[scale-buyer:1]              130 vB  "accepted"
+  refund[scale-buyer:2]              130 vB  "accepted"
+  refund[scale-buyer:3]              130 vB  "accepted"
+wrote /root/zkc-m17/m13/anchored-2-bound/scenario-tampered.json
+scenario tampered: 109.49 s, 3247956 KiB max RSS
