@@ -10,11 +10,11 @@
 #   address   prints a testnet4 address of wallet m16 to fund, and its balance
 # Default scenarios: unchallenged late stall challenged.
 #
-# Both modes presign at 100 sat/kvB (testnet4's relay floor) and pay the same for transactions
-# signed when posted (the wallet funds at 1 sat/vB), price the challenge at the presigned rate,
-# and use a 5,000-sat bond, a 2,500-sat burn and a 1,000-sat deadline connector. testnet4's
-# blocks take 100 sat/kvB transactions, so there is no fee spike to bump through here (M9 and
-# M13 cover that). Every key is salted with <work>/key-salt
+# Both modes presign at 100 sat/kvB (testnet4's relay floor) unless ZKC_SAT_PER_KVB says
+# otherwise, pay the same for transactions signed when posted (the wallet funds at 1 sat/vB),
+# price the challenge at that rate, and use a 5,000-sat bond, a 2,500-sat burn and a 1,000-sat
+# deadline connector. The presigned and market rates are equal, so there is no fee spike to bump
+# through here (M9 and M13 cover that). Every key is salted with <work>/key-salt
 # (made here, mode 600, never committed): on a public chain, keys from public labels alone
 # would be anyone's. Expects prove_batch.sh --small and `zkc-m1 prepare` to have filled <work>.
 # Results land in <work>/m16/<mode>/.
@@ -28,10 +28,12 @@ BIN="$WORK/target/release"
 BTC="${BITCOIN_BIN:+$BITCOIN_BIN/}"
 [ -f "$WORK/key-salt" ] || { (umask 077; head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$WORK/key-salt"); }
 
-# The amounts can be set from outside (the testnet4 run used a 2,500-sat bond, a 1,000-sat burn
-# and a 500-sat connector to fit the coins it had).
+# The amounts and the rate can be set from outside (M16.md gives what each testnet4 run used).
+# ZKC_SAT_PER_KVB sets the presigned, market and maximum rate together: 1000 is what testnet4's
+# minimum-difficulty miners take.
+RATE="${ZKC_SAT_PER_KVB:-100}"
 export ZKC_CHAIN=live ZKC_GRAPH=anchored ZKC_BIND_HEIGHT=1 ZKC_VALIDATE=0 \
-  ZKC_PRESIGN_SAT_PER_KVB=100 ZKC_MARKET_SAT_PER_KVB=100 ZKC_MAX_SAT_PER_KVB=100 \
+  ZKC_PRESIGN_SAT_PER_KVB="$RATE" ZKC_MARKET_SAT_PER_KVB="$RATE" ZKC_MAX_SAT_PER_KVB="$RATE" \
   ZKC_BOND_SATS="${ZKC_BOND_SATS:-5000}" ZKC_BURN_SATS="${ZKC_BURN_SATS:-2500}" ZKC_DEADLINE_SATS="${ZKC_DEADLINE_SATS:-1000}" \
   ZKC_KEY_SALT="$(cat "$WORK/key-salt")" ZKC_WALLET=m16
 
@@ -71,12 +73,14 @@ esac
 
 out="$WORK/m16/$MODE"
 mkdir -p "$out"
+# The driver names its results directory by the rate: sat/vB when whole, else sat/kvB.
+if [ $((RATE % 1000)) -eq 0 ]; then rate_dir=$((RATE / 1000)); else rate_dir="${RATE}kvb"; fi
 "${BTC}bitcoind" -version | head -1 > "$out/node-version.txt"
 echo "mode $MODE; chain $("${CLI[@]}" getblockchaininfo | grep '"chain"' | tr -d ' ,')" >> "$out/node-version.txt"
 for s in "${SCENARIOS[@]}"; do
   echo "== $MODE: scenario $s (height $("${CLI[@]}" getblockcount))"
   /usr/bin/time -f "scenario $MODE $s: %e s, %M KiB max RSS" "${BIN}/zkc-m2" scenario "$WORK" "$s"
-  mv "$WORK"/m16/anchored-100kvb-bound-live/scenario-"$s".json "$out/"
+  mv "$WORK"/m16/anchored-"$rate_dir"-bound-live/scenario-"$s".json "$out/"
 done
 "${CLI[@]}" -rpcwallet=m16 getbalances > "$out/wallet-after.json"
 echo "results: $out"

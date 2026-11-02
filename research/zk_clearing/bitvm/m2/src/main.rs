@@ -949,7 +949,9 @@ fn scenario(inp: &Inputs, run: &Run, name: &str) {
         }
         "challenged" | "tampered" => {
             // The honest operator is challenged in the last block it can be; the tampered one at once.
-            if name == "challenged" {
+            // A live chain challenges at once too: its next block may come from a miner that
+            // includes nothing, and a challenge mined after T_challenge races the payout.
+            if name == "challenged" && !run.live {
                 mine_to_tip(&rpc, &miner, h_k + u64::from(T_CHALLENGE) - 2);
             }
             trace.record(&rpc, "challenge", &challenge, "KC (presigned SINGLE|ANYONECANPAY) + challenger's coin").expect("challenge standard");
@@ -957,7 +959,10 @@ fn scenario(inp: &Inputs, run: &Run, name: &str) {
             let h_c = height_of(&rpc, &challenge);
             facts["challenge_height_minus_kickoff_height"] = json!(h_c - h_k);
             if name == "challenged" {
-                assert_eq!(h_c, h_k + u64::from(T_CHALLENGE) - 1);
+                // KC is spent at any height; a live run probes at once, keeping the blocks for the assert.
+                if !run.live {
+                    assert_eq!(h_c, h_k + u64::from(T_CHALLENGE) - 1);
+                }
                 facts["negative_payout_unchallenged_after_challenge"] =
                     trace.reject(&rpc, &miner, "payout_unchallenged(challenged)", &s.payout_unchallenged, "T_challenge reached; KC spent by the challenge");
             }
