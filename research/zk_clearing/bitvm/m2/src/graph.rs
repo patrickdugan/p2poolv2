@@ -114,55 +114,243 @@ impl Graph {
     }
 }
 
-/// Timeouts in blocks. T_KICKOFF is policy: the operator kicks off within T_KICKOFF blocks of
-/// the escrows' confirmation. The rest are relative locktimes that consensus enforces.
-pub const T_KICKOFF: u16 = 6;
-/// payout_unchallenged spends KC no earlier than T_CHALLENGE blocks after the kickoff.
-pub const T_CHALLENGE: u16 = 6;
-/// timeout spends KA no earlier than T_ASSERT blocks after the kickoff.
-pub const T_ASSERT: u16 = 12;
-/// payout_asserted spends A no earlier than T_DISPROVE blocks after assert_final.
-pub const T_DISPROVE: u16 = 6;
-/// A buyer's refund leaf opens T_REFUND blocks after its escrow confirms.
-pub const T_REFUND: u16 = 30;
-/// The assert chain needs three blocks in sequence: assert_init, the commits (only one fits
-/// in the mempool beside an unconfirmed assert_init; the challenged scenario probes it), then
-/// assert_final.
-pub const ASSERT_BLOCKS: u16 = 3;
-/// Blocks every deadline must leave to spare on regtest: the reorg and inclusion margin r.
-pub const MARGIN: u16 = 2;
-/// Bound graphs (M13): the deadline connector opens to anyone this many blocks after
-/// batchHeight, so the kickoff has to confirm in blocks batchHeight + 1 to batchHeight +
-/// DEADLINE_AFTER_BATCH. The batch proof holds every order expiry to at least batchHeight +
-/// DEADLINE_AFTER_BATCH (signed_terms.circom).
-pub const DEADLINE_AFTER_BATCH: u64 = 4;
-/// Bound graphs: the batch proof holds every escrowExpiry to at least batchHeight +
-/// ESCROW_AFTER_BATCH (signed_terms.circom), and each escrow refunds through CLTV at the
-/// expiry its buyer signed. The smallest that leaves the latest payout MARGIN blocks.
-pub const ESCROW_AFTER_BATCH: u64 = 22;
+/// The graph's clocks, derived from two measured chain parameters (TIMING.md):
+///
+/// - `gap` G: the most blocks in a row that may include none of our transactions, so a
+///   transaction posted at tip t is mined by block t + W with W = G + 1 (one inclusion step);
+/// - `reorg` R: the deepest reorganization to survive. A transaction first mined at block x may
+///   be mined again as late as x + R, so each window needs W per sequential step plus R.
+///
+/// A window that ends at block D (a competing transaction becomes valid in D) has D - 1 as its
+/// last safe block. `disprove_gap` is G for the disprove, which is non-standard and so needs a
+/// miner that accepts it (M12); it equals G unless set.
+///
+/// T_KICKOFF is policy: the operator kicks off within `t_kickoff` blocks of the escrows'
+/// confirmation. The rest are relative locktimes that consensus enforces (BIP68: at most 65,535).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Timing {
+    /// Display name: "regtest", "testnet4" or "custom".
+    pub profile: String,
+    /// Suffix of the results directory: empty for the default regtest profile.
+    pub tag: String,
+    pub gap: u32,
+    pub reorg: u32,
+    pub disprove_gap: u32,
+    /// The operator kicks off within this many blocks of the escrows' confirmation.
+    pub t_kickoff: u16,
+    /// payout_unchallenged spends KC no earlier than this many blocks after the kickoff.
+    pub t_challenge: u16,
+    /// timeout spends KA no earlier than this many blocks after the kickoff.
+    pub t_assert: u16,
+    /// payout_asserted spends A no earlier than this many blocks after assert_final.
+    pub t_disprove: u16,
+    /// A buyer's refund leaf opens this many blocks after its escrow confirms (unbound graphs).
+    pub t_refund: u16,
+    /// The assert chain needs three blocks in sequence: assert_init, the commits (only one fits
+    /// in the mempool beside an unconfirmed assert_init; the challenged scenario probes it), then
+    /// assert_final.
+    pub assert_blocks: u16,
+    /// Bound graphs (M13): the deadline connector opens to anyone after batchHeight + this, so
+    /// the kickoff has to confirm in blocks batchHeight + 1 to batchHeight + deadline_after_batch.
+    /// The batch proof holds every order expiry to at least batchHeight + this
+    /// (signed_terms.circom's DEADLINE_AFTER_BATCH), which only the circuit enforces for sellers.
+    pub deadline_after_batch: u64,
+    /// Bound graphs: the batch proof holds every escrowExpiry to at least batchHeight + this
+    /// (signed_terms.circom's ESCROW_AFTER_BATCH), and each escrow refunds through CLTV at the
+    /// expiry its buyer signed. The smallest that leaves the latest payout W + R blocks.
+    pub escrow_after_batch: u64,
+}
 
-/// Blocks to spare at each deadline in the worst case, by the constraint's name. Each must
-/// be at least MARGIN.
-pub fn timing_slack() -> Vec<(&'static str, i64)> {
-    let (k, c, a, d, r) = (T_KICKOFF as i64, T_CHALLENGE as i64, T_ASSERT as i64, T_DISPROVE as i64, T_REFUND as i64);
-    vec![
-        // A watcher sees the kickoff at h_k and must have its challenge mined by h_k + c - 1.
-        ("challenge: blocks to get a challenge mined after the kickoff", c - 1),
-        // Unchallenged: only the payout can spend KB from h_k + c until the timeout at h_k + a.
-        ("unchallenged payout: blocks before the timeout opens", a - c),
-        // Challenged at h_k + c - 1: assert_final lands at h_k + c - 1 + ASSERT_BLOCKS, at the
-        // earliest; the timeout opens at h_k + a.
-        ("assert: blocks to spare after a last-block challenge", a - c - ASSERT_BLOCKS as i64),
-        // Only a disprove can spend A for d blocks after assert_final.
-        ("disprove: blocks to get a disprove mined after A", d),
-        // The latest payout_asserted is valid from h_e + k + (a - 1) + d; refunds open at h_e + r.
-        ("refund: blocks the latest payout has before refunds open", r - (k + a - 1 + d)),
-        // Bound: the latest kickoff is batchHeight + DEADLINE_AFTER_BATCH, its payout_asserted
-        // valid (a - 1) + d blocks later; the earliest refund enters the block after
-        // batchHeight + ESCROW_AFTER_BATCH.
-        ("bound refund: blocks the latest payout has before the earliest signed expiry opens",
-            ESCROW_AFTER_BATCH as i64 + 1 - (DEADLINE_AFTER_BATCH as i64 + a - 1 + d)),
-    ]
+/// The assert chain's sequential steps.
+pub const ASSERT_BLOCKS: u16 = 3;
+
+/// One timing constraint: the blocks a window has, and the blocks its worst case needs.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Constraint {
+    pub name: &'static str,
+    pub available: i64,
+    pub required: i64,
+}
+
+impl Constraint {
+    pub fn slack(&self) -> i64 {
+        self.available - self.required
+    }
+}
+
+/// The circuit constants of signed_terms.circom, which are the regtest profile's. A deployment
+/// on a profile with larger values has to recompile the circuit (TIMING.md section 6).
+pub const CIRCUIT_DEADLINE_AFTER_BATCH: u64 = 4;
+pub const CIRCUIT_ESCROW_AFTER_BATCH: u64 = 22;
+
+impl Timing {
+    /// The regtest profile: the numbers M2 to M17 ran with. They dominate `from_chain(0, 1)`.
+    pub fn regtest() -> Timing {
+        Timing {
+            profile: "regtest".into(),
+            tag: String::new(),
+            gap: 0,
+            reorg: 1,
+            disprove_gap: 0,
+            t_kickoff: 6,
+            t_challenge: 6,
+            t_assert: 12,
+            t_disprove: 6,
+            t_refund: 30,
+            assert_blocks: ASSERT_BLOCKS,
+            deadline_after_batch: CIRCUIT_DEADLINE_AFTER_BATCH,
+            escrow_after_batch: CIRCUIT_ESCROW_AFTER_BATCH,
+        }
+    }
+
+    /// The smallest clocks that satisfy every constraint for gap `gap` and reorg depth `reorg`;
+    /// `disprove_gap` sizes the disprove window (None: `gap`). Errors if a clock exceeds BIP68's
+    /// 65,535 blocks.
+    pub fn from_chain(gap: u32, reorg: u32, disprove_gap: Option<u32>) -> Result<Timing, String> {
+        let gd = disprove_gap.unwrap_or(gap);
+        let (w, wd, r) = (u64::from(gap) + 1, u64::from(gd) + 1, u64::from(reorg));
+        let m = w + r;
+        let t_challenge = m + 1;
+        let t_assert = t_challenge + u64::from(ASSERT_BLOCKS) * w + r;
+        let t_disprove = wd + r + 1;
+        let deadline = m;
+        let t_kickoff = m;
+        let escrow = deadline + (t_assert - 1) + t_disprove + m - 1;
+        let t_refund = t_kickoff + (t_assert - 1) + t_disprove + m;
+        let fit = |name: &str, v: u64| u16::try_from(v).ok().filter(|v| *v <= 65_535).ok_or_else(|| format!("{name} = {v} blocks exceeds BIP68's 65,535"));
+        let tag = format!("g{gap}r{reorg}{}", disprove_gap.map(|d| format!("d{d}")).unwrap_or_default());
+        Ok(Timing {
+            profile: "custom".into(),
+            tag,
+            gap,
+            reorg,
+            disprove_gap: gd,
+            t_kickoff: fit("T_KICKOFF", t_kickoff)?,
+            t_challenge: fit("T_CHALLENGE", t_challenge)?,
+            t_assert: fit("T_ASSERT", t_assert)?,
+            t_disprove: fit("T_DISPROVE", t_disprove)?,
+            t_refund: fit("T_REFUND", t_refund)?,
+            assert_blocks: ASSERT_BLOCKS,
+            deadline_after_batch: deadline,
+            escrow_after_batch: escrow,
+        })
+    }
+
+    /// A named profile: "regtest" or "testnet4" (G = 90, R = 16, from the testnet4 record in
+    /// TIMING.md).
+    pub fn named(name: &str) -> Result<Timing, String> {
+        match name {
+            "regtest" => Ok(Timing::regtest()),
+            "testnet4" => Timing::from_chain(90, 16, None).map(|t| Timing { profile: "testnet4".into(), tag: "testnet4".into(), ..t }),
+            other => Err(format!("ZKC_TIMING must be regtest or testnet4, not {other}")),
+        }
+    }
+
+    /// The profile a run uses: ZKC_INCLUSION_GAP and ZKC_REORG_DEPTH together (and optionally
+    /// ZKC_DISPROVE_GAP) name a custom one; else ZKC_TIMING=regtest|testnet4; else regtest.
+    pub fn from_env() -> Timing {
+        let var = |name: &str| std::env::var(name).ok().map(|v| v.parse::<u32>().unwrap_or_else(|_| panic!("{name} must be an integer")));
+        let t = match (var("ZKC_INCLUSION_GAP"), var("ZKC_REORG_DEPTH")) {
+            (Some(g), Some(r)) => Timing::from_chain(g, r, var("ZKC_DISPROVE_GAP")),
+            (None, None) => Timing::named(std::env::var("ZKC_TIMING").as_deref().unwrap_or("regtest")),
+            _ => Err("ZKC_INCLUSION_GAP and ZKC_REORG_DEPTH must be set together".into()),
+        };
+        let t = t.unwrap_or_else(|e| panic!("{e}"));
+        t.check().unwrap_or_else(|e| panic!("{e}"));
+        t
+    }
+
+    /// W = G + 1: blocks one inclusion step takes in the worst case.
+    pub fn step(&self) -> i64 {
+        i64::from(self.gap) + 1
+    }
+
+    /// W + R, the least any window can have: one inclusion step and a reorg. It generalises the
+    /// regtest MARGIN of 2.
+    pub fn margin(&self) -> i64 {
+        self.step() + i64::from(self.reorg)
+    }
+
+    /// Every constraint with the blocks its window has and the blocks the worst case needs.
+    pub fn constraints(&self) -> Vec<Constraint> {
+        let (k, c, a, d, r) = (i64::from(self.t_kickoff), i64::from(self.t_challenge), i64::from(self.t_assert), i64::from(self.t_disprove), i64::from(self.t_refund));
+        let (w, wd, rd, m) = (self.step(), i64::from(self.disprove_gap) + 1, i64::from(self.reorg), self.margin());
+        let (dl, esc) = (self.deadline_after_batch as i64, self.escrow_after_batch as i64);
+        let steps = i64::from(self.assert_blocks);
+        let at = |name, available, required| Constraint { name, available, required };
+        vec![
+            // The kickoff is mined at h_k; a watcher posts its challenge then. It is mined by
+            // h_k + W, can be mined again by h_k + W + R, and must be in by h_k + c - 1.
+            at("challenge: blocks to get a challenge mined after the kickoff", c - 1, m),
+            // Unchallenged: posted when the payout opens (tip h_k + c - 1), mined by h_k + c - 1 + W,
+            // again by + R; only the payout can spend KB from h_k + c until the timeout at h_k + a.
+            at("unchallenged payout: blocks before the timeout opens", a - c, m),
+            // Challenged in the last block, h_k + c - 1: the three steps land by h_k + c - 1 + 3W,
+            // assert_final again by + R, and the timeout opens at h_k + a.
+            at("assert: blocks for the chain after a last-block challenge", a - c, steps * w + rd),
+            // A is mined at h_a; a disprove is posted then, mined by h_a + W_d, again by + R, and
+            // must be in by h_a + d - 1 (payout_asserted opens at h_a + d).
+            at("disprove: blocks to get a disprove mined after A", d - 1, wd + rd),
+            // The latest payout_asserted is valid from h_e + k + (a - 1) + d, mined by W - 1
+            // blocks after that, again by + R; refunds open at h_e + r.
+            at("refund: blocks the latest payout has before refunds open", r - (k + a - 1 + d), m),
+            // Bound: the latest kickoff is at batchHeight + deadline, its payout_asserted valid
+            // (a - 1) + d blocks later; the earliest refund enters the block after
+            // batchHeight + ESCROW_AFTER_BATCH.
+            at("bound refund: blocks the latest payout has before the earliest signed expiry opens", esc + 1 - (dl + a - 1 + d), m),
+            // The operator posts the kickoff at batchHeight (bound), or when the escrows confirm
+            // (unbound, policy).
+            at("kickoff: blocks to get the kickoff mined after batchHeight", dl, m),
+            at("kickoff policy: blocks after the escrows confirm", k, m),
+        ]
+    }
+
+    /// Blocks to spare at each constraint (available minus required), by the constraint's name.
+    pub fn slack(&self) -> Vec<(&'static str, i64)> {
+        self.constraints().iter().map(|c| (c.name, c.slack())).collect()
+    }
+
+    /// Ok if every clock fits BIP68 and every constraint has what it needs.
+    pub fn check(&self) -> Result<(), String> {
+        for (name, v) in [("T_KICKOFF", self.t_kickoff), ("T_CHALLENGE", self.t_challenge), ("T_ASSERT", self.t_assert), ("T_DISPROVE", self.t_disprove), ("T_REFUND", self.t_refund)] {
+            if v == 0 {
+                return Err(format!("{name} = 0: BIP68 allows 1 to 65,535 blocks"));
+            }
+        }
+        for c in self.constraints() {
+            if c.required < self.margin() || c.available < c.required {
+                return Err(format!("{}: {} blocks, {} needed (profile {}, W + R = {})", c.name, c.available, c.required, self.profile, self.margin()));
+            }
+        }
+        Ok(())
+    }
+
+    /// The escrow expiry the driver has buyers sign, in blocks after batchHeight: the profile's
+    /// bound, or where the refunds open in the block the unbound graph's CSV refunds do
+    /// (h_e + T_REFUND, batchHeight = h_e + `batch_after_funding`), whichever is later.
+    pub fn signed_escrow_after_batch(&self, batch_after_funding: u64) -> u64 {
+        self.escrow_after_batch.max(u64::from(self.t_refund) - 1 - batch_after_funding)
+    }
+
+    /// Whether signed_terms.circom's compiled constants cover this profile: (orders hold until
+    /// the latest kickoff, escrows until the latest payout).
+    pub fn circuit_covers(&self) -> (bool, bool) {
+        (CIRCUIT_DEADLINE_AFTER_BATCH >= self.deadline_after_batch, CIRCUIT_ESCROW_AFTER_BATCH >= self.escrow_after_batch)
+    }
+
+    /// The profile for result files.
+    pub fn json(&self) -> serde_json::Value {
+        let (orders, escrows) = self.circuit_covers();
+        serde_json::json!({
+            "profile": self.profile, "inclusion_gap_blocks": self.gap, "reorg_depth_blocks": self.reorg, "disprove_gap_blocks": self.disprove_gap,
+            "step_blocks": self.step(), "margin": self.margin(),
+            "t_kickoff": self.t_kickoff, "t_challenge": self.t_challenge, "t_assert": self.t_assert, "t_disprove": self.t_disprove, "t_refund": self.t_refund,
+            "assert_blocks": self.assert_blocks, "deadline_after_batch": self.deadline_after_batch, "escrow_after_batch": self.escrow_after_batch,
+            "circuit": {"deadline_after_batch": CIRCUIT_DEADLINE_AFTER_BATCH, "escrow_after_batch": CIRCUIT_ESCROW_AFTER_BATCH,
+                "orders_covered": orders, "escrows_covered": escrows},
+            "constraints": self.constraints().iter().map(|c| serde_json::json!({"constraint": c.name, "available": c.available, "required": c.required, "slack": c.slack()})).collect::<Vec<_>>(),
+        })
+    }
 }
 
 pub struct Keys {
@@ -312,29 +500,31 @@ impl Utxo {
 }
 
 /// Escrow output for one buyer: the committee's key path pays out, the buyer's leaf refunds.
-/// The refund opens T_REFUND blocks after funding (CSV), or with `expiry` (M13) after an
+/// The refund opens `t_refund` blocks after funding (CSV), or with `expiry` (M13) after an
 /// absolute height: the escrow expiry the buyer signed, enforced by CLTV.
 pub struct Escrow {
     pub buyer: String,
     pub refund_leaf: ScriptBuf,
     pub expiry: Option<u32>,
+    /// The CSV refund delay of an unbound escrow (the profile's T_REFUND).
+    pub t_refund: u16,
     pub tree: ScriptTree,
     pub utxo: Utxo,
 }
 
 impl Escrow {
-    pub fn new(keys: &Keys, buyer: &str, expiry: Option<u32>) -> Escrow {
+    pub fn new(keys: &Keys, buyer: &str, expiry: Option<u32>, t_refund: u16) -> Escrow {
         let key = xonly(&keys.secp, &format!("buyer:{buyer}"));
         let refund_leaf = match expiry {
             Some(height) => cltv_checksig(height, &key),
-            None => csv_checksig(T_REFUND, &key),
+            None => csv_checksig(t_refund, &key),
         };
         let tree = ScriptTree::with_internal_key(&keys.secp, keys.x(&keys.committee), vec![leaf_hash(&refund_leaf)]);
-        Escrow { buyer: buyer.to_string(), refund_leaf, expiry, tree, utxo: Utxo { outpoint: OutPoint::null(), txout: txout(0, ScriptBuf::new()) } }
+        Escrow { buyer: buyer.to_string(), refund_leaf, expiry, t_refund, tree, utxo: Utxo { outpoint: OutPoint::null(), txout: txout(0, ScriptBuf::new()) } }
     }
 }
 
-/// The buyer's refund after T_refund or the escrow's expiry, paying `to` (the buyer's refund
+/// The buyer's refund after `t_refund` or the escrow's expiry, paying `to` (the buyer's refund
 /// payee). The buyer signs it when posting, at the market fee `rate`.
 pub fn refund_tx(keys: &Keys, escrow: &Escrow, to: ScriptBuf, rate: u64) -> Transaction {
     let buyer = keypair(&keys.secp, &format!("buyer:{}", escrow.buyer));
@@ -345,7 +535,7 @@ pub fn refund_tx(keys: &Keys, escrow: &Escrow, to: ScriptBuf, rate: u64) -> Tran
                 t.lock_time = LockTime::from_height(height).expect("block height lock time");
                 t
             }
-            None => tx(vec![(escrow.utxo.outpoint, Sequence::from_height(T_REFUND))], vec![txout(value, to.clone())]),
+            None => tx(vec![(escrow.utxo.outpoint, Sequence::from_height(escrow.t_refund))], vec![txout(value, to.clone())]),
         };
         let sig = sign_script_path(keys, &buyer, &t, &[escrow.utxo.txout.clone()], 0, &escrow.refund_leaf);
         t.input[0].witness = script_path_witness(vec![sig], &escrow.refund_leaf, &escrow.tree, 0, keys);
@@ -824,10 +1014,90 @@ pub fn worst_case_items(items: &[Vec<u8>]) -> Vec<Vec<u8>> {
 mod tests {
     use super::*;
 
+    fn profiles() -> Vec<Timing> {
+        let mut all = vec![Timing::regtest(), Timing::named("testnet4").unwrap()];
+        for (g, r) in [(0, 1), (0, 2), (1, 1), (3, 2), (6, 6), (20, 4), (90, 16), (200, 30)] {
+            all.push(Timing::from_chain(g, r, None).unwrap());
+        }
+        all.push(Timing::from_chain(3, 2, Some(40)).unwrap());
+        all
+    }
+
     #[test]
     fn timeouts_leave_the_margin() {
-        for (name, blocks) in timing_slack() {
-            assert!(blocks >= i64::from(MARGIN), "{name}: {blocks} blocks");
+        for t in profiles() {
+            t.check().unwrap();
+            for c in t.constraints() {
+                assert!(c.required >= t.margin(), "{} {}: needs {} < W + R = {}", t.profile, c.name, c.required, t.margin());
+                assert!(c.available >= t.margin(), "{} {}: {} blocks < W + R = {}", t.profile, c.name, c.available, t.margin());
+                assert!(c.slack() >= 0, "{} {}: {} blocks, {} needed", t.profile, c.name, c.available, c.required);
+            }
+        }
+    }
+
+    #[test]
+    fn regtest_profile_is_the_numbers_m2_to_m17_ran_with() {
+        let t = Timing::regtest();
+        assert_eq!((t.t_kickoff, t.t_challenge, t.t_assert, t.t_disprove, t.t_refund, t.assert_blocks), (6, 6, 12, 6, 30, 3));
+        assert_eq!((t.deadline_after_batch, t.escrow_after_batch), (4, 22));
+        assert_eq!(t.margin(), 2);
+        assert_eq!(t.circuit_covers(), (true, true));
+        assert_eq!(t.signed_escrow_after_batch(2), 27);
+        assert!(t.tag.is_empty());
+        // The default Escrow refund delay and the CSV in the refund leaf are the profile's.
+        let keys = Keys::new();
+        assert_eq!(Escrow::new(&keys, "b", None, t.t_refund).refund_leaf, csv_checksig(30, &xonly(&keys.secp, "buyer:b")));
+    }
+
+    #[test]
+    fn regtest_dominates_what_the_formulas_derive() {
+        // The formulas give the least clocks for (G, R) = (0, 1); regtest's are at least those.
+        let (reg, min) = (Timing::regtest(), Timing::from_chain(0, 1, None).unwrap());
+        assert_eq!((min.t_kickoff, min.t_challenge, min.t_assert, min.t_disprove, min.t_refund), (2, 3, 7, 3, 13));
+        assert_eq!((min.deadline_after_batch, min.escrow_after_batch), (2, 12));
+        assert!(reg.t_kickoff >= min.t_kickoff && reg.t_challenge >= min.t_challenge && reg.t_assert >= min.t_assert);
+        assert!(reg.t_disprove >= min.t_disprove && reg.t_refund >= min.t_refund);
+        assert!(reg.deadline_after_batch >= min.deadline_after_batch && reg.escrow_after_batch >= min.escrow_after_batch);
+        // At regtest's own deadline and clocks the escrow formula gives exactly 22.
+        let m = reg.margin() as u64;
+        assert_eq!(reg.deadline_after_batch + u64::from(reg.t_assert - 1) + u64::from(reg.t_disprove) + m - 1, reg.escrow_after_batch);
+    }
+
+    #[test]
+    fn derived_profiles_are_tight_and_fit_bip68() {
+        let t = Timing::from_chain(90, 16, None).unwrap();
+        assert_eq!(t.margin(), 107);
+        assert_eq!((t.t_kickoff, t.t_challenge, t.t_assert, t.t_disprove, t.t_refund), (107, 108, 397, 108, 718));
+        assert_eq!((t.deadline_after_batch, t.escrow_after_batch), (107, 717));
+        // Each derived clock is the least that passes: one block less fails.
+        for shrink in 0..7 {
+            let mut u = t.clone();
+            match shrink {
+                0 => u.t_challenge -= 1,
+                1 => u.t_assert -= 1,
+                2 => u.t_disprove -= 1,
+                3 => u.t_refund -= 1,
+                4 => u.t_kickoff -= 1,
+                5 => u.deadline_after_batch -= 1,
+                _ => u.escrow_after_batch -= 1,
+            }
+            assert!(u.check().is_err(), "clock {shrink} is not tight");
+        }
+        assert!(Timing::from_chain(30_000, 30_000, None).is_err());
+    }
+
+    #[test]
+    fn a_wider_disprove_gap_widens_only_what_depends_on_it() {
+        let (a, b) = (Timing::from_chain(3, 2, None).unwrap(), Timing::from_chain(3, 2, Some(40)).unwrap());
+        assert_eq!((a.t_challenge, a.t_assert, a.t_kickoff, a.deadline_after_batch), (b.t_challenge, b.t_assert, b.t_kickoff, b.deadline_after_batch));
+        assert_eq!(b.t_disprove, a.t_disprove + 37);
+        assert_eq!(b.escrow_after_batch, a.escrow_after_batch + 37);
+    }
+
+    #[test]
+    fn signed_escrow_expiry_covers_the_bound() {
+        for t in profiles() {
+            assert!(t.signed_escrow_after_batch(2) >= t.escrow_after_batch);
         }
     }
 

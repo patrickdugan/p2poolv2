@@ -133,10 +133,17 @@ bound graph's deadline and latest payout (M13.md section 2). And power 23: packi
 
 Engineering that can be done next without anyone else:
 
-1. **Timeouts sized for a public chain.** testnet4's challenged run (M16) used up every margin.
-   It saw 7 empty blocks in a row and a 4-block reorg that moved assert_final past T_assert. The
-   T values were sized on regtest; size them from a chain's record of empty blocks and reorg
-   depth.
+1. **Timeouts sized for a public chain. Done on regtest (TIMING.md); testnet4 run pending.**
+   testnet4's challenged run (M16) used up every margin: 7 empty blocks in a row and a 4-block
+   reorg that moved assert_final past T_assert. The graph's clocks are now a `Timing` profile
+   derived from two chain parameters: G, the blocks in a row that may include none of our
+   transactions, and R, the reorg depth to survive. W = G + 1 is one inclusion step, and a window
+   with *s* sequential transactions needs *s*·W + R blocks (T_challenge = W + R + 1,
+   T_assert = 4W + 2R + 1, escrow bound 7W + 5R). The regtest profile (G 0, R 1) is the old
+   numbers; `ZKC_TIMING=testnet4` is G 90, R 16 from the last 2,016 blocks (T_assert 397,
+   T_refund 718, escrow bound 717). Rehearsed on a timed regtest chain at G 3, R 2 for
+   unchallenged, late, stall and challenged. A deployment on another profile recompiles
+   `signed_terms.circom` (TIMING.md section 6): only the circuit protects a seller's order expiry.
 2. **One statement for everything. Done (M17).** M15's packed joined circuit
    (`owned_tree_pk_16x4`, 152,937 constraints) runs through M14's one-input BitVM pipeline on M13's
    bound, anchored graph in one regtest run per scenario: unchallenged (1,657 vB on chain),

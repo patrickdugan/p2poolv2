@@ -10,6 +10,12 @@
 #   address   prints a testnet4 address of wallet m16 to fund, and its balance
 # Default scenarios: unchallenged late stall challenged.
 #
+# Timing (TIMING.md): the clocks come from the profile in the environment, not from constants.
+#   ZKC_TIMING=regtest|testnet4   a named profile (default regtest, the M16 numbers)
+#   ZKC_INCLUSION_GAP=<G> ZKC_REORG_DEPTH=<R> [ZKC_DISPROVE_GAP=<Gd>]   a custom one
+# A non-default profile's results land in <work>/m16/<mode>-<tag> (tag: testnet4, g3r2, ...).
+# REHEARSE_RPC_PORT (default 18803) is the private regtest node's RPC port; its p2p port is one more.
+#
 # Both modes presign at 100 sat/kvB (testnet4's relay floor) unless ZKC_SAT_PER_KVB says
 # otherwise, pay the same for transactions signed when posted (the wallet funds at 1 sat/vB),
 # price the challenge at that rate, and use a 5,000-sat bond, a 2,500-sat burn and a 1,000-sat
@@ -40,13 +46,14 @@ export ZKC_CHAIN=live ZKC_GRAPH=anchored ZKC_BIND_HEIGHT=1 ZKC_VALIDATE=0 \
 case "$MODE" in
   rehearse)
     DATADIR="$WORK/regtest-m16"
-    CLI=("${BTC}bitcoin-cli" -regtest -datadir="$DATADIR" -rpcport=18803 -rpcuser=zkc -rpcpassword=zkc-m16-regtest)
-    export ZKC_RPC_URL="http://127.0.0.1:18803" ZKC_RPC_USER=zkc ZKC_RPC_PASS=zkc-m16-regtest
+    PORT="${REHEARSE_RPC_PORT:-18803}"
+    CLI=("${BTC}bitcoin-cli" -regtest -datadir="$DATADIR" -rpcport="$PORT" -rpcuser=zkc -rpcpassword=zkc-m16-regtest)
+    export ZKC_RPC_URL="http://127.0.0.1:$PORT" ZKC_RPC_USER=zkc ZKC_RPC_PASS=zkc-m16-regtest
     "${CLI[@]}" stop >/dev/null 2>&1 && sleep 3 || true
     rm -rf "$DATADIR"
     mkdir -p "$DATADIR"
     "${BTC}bitcoind" -regtest -datadir="$DATADIR" -daemon -txindex=1 -fallbackfee=0.0002 \
-      -rpcport=18803 -port=18804 -rpcuser=zkc -rpcpassword=zkc-m16-regtest -rpcthreads=4 -listen=0
+      -rpcport="$PORT" -port="$((PORT + 1))" -rpcuser=zkc -rpcpassword=zkc-m16-regtest -rpcthreads=4 -listen=0
     for _ in $(seq 60); do "${CLI[@]}" getblockcount >/dev/null 2>&1 && break; sleep 1; done
     "${CLI[@]}" createwallet m16 >/dev/null
     "${CLI[@]}" -rpcwallet=m16 generatetoaddress 200 "$("${CLI[@]}" -rpcwallet=m16 getnewaddress)" >/dev/null
@@ -71,7 +78,15 @@ case "$MODE" in
   *) echo "mode must be rehearse, testnet4 or address"; exit 2 ;;
 esac
 
-out="$WORK/m16/$MODE"
+# The profile's tag, as the driver names it.
+if [ -n "${ZKC_INCLUSION_GAP:-}" ]; then
+  TAG="g${ZKC_INCLUSION_GAP}r${ZKC_REORG_DEPTH:?ZKC_INCLUSION_GAP needs ZKC_REORG_DEPTH}${ZKC_DISPROVE_GAP:+d$ZKC_DISPROVE_GAP}"
+elif [ "${ZKC_TIMING:-regtest}" != regtest ]; then
+  TAG="$ZKC_TIMING"
+else
+  TAG=""
+fi
+out="$WORK/m16/$MODE${TAG:+-$TAG}"
 mkdir -p "$out"
 # The driver names its results directory by the rate: sat/vB when whole, else sat/kvB.
 if [ $((RATE % 1000)) -eq 0 ]; then rate_dir=$((RATE / 1000)); else rate_dir="${RATE}kvb"; fi
@@ -80,7 +95,7 @@ echo "mode $MODE; chain $("${CLI[@]}" getblockchaininfo | grep '"chain"' | tr -d
 for s in "${SCENARIOS[@]}"; do
   echo "== $MODE: scenario $s (height $("${CLI[@]}" getblockcount))"
   /usr/bin/time -f "scenario $MODE $s: %e s, %M KiB max RSS" "${BIN}/zkc-m2" scenario "$WORK" "$s"
-  mv "$WORK"/m16/anchored-"$rate_dir"-bound-live/scenario-"$s".json "$out/"
+  mv "$WORK"/m16/anchored-"$rate_dir"-bound-live${TAG:+-$TAG}/scenario-"$s".json "$out/"
 done
 "${CLI[@]}" -rpcwallet=m16 getbalances > "$out/wallet-after.json"
 echo "results: $out"
